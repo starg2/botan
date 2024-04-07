@@ -1127,7 +1127,8 @@ class Speed final : public Command {
             auto mult_timer = make_timer(group_name + " Montgomery ladder");
             auto blinded_mult_timer = make_timer(group_name + " blinded comb");
             auto blinded_var_mult_timer = make_timer(group_name + " blinded window");
-            auto pcurves_timer = make_timer(group_name + " pcurve base");
+            auto pcurves_base_timer = make_timer(group_name + " pcurve base");
+            auto pcurves_var_timer = make_timer(group_name + " pcurve var");
 
             const Botan::EC_Point& base_point = ec_group.get_base_point();
 
@@ -1150,8 +1151,16 @@ class Speed final : public Command {
 
    #if defined(BOTAN_HAS_PCURVES)
                if(auto id = Botan::PCurve::PrimeOrderCurveId::from_string(group_name)) {
-                  const auto scalar_bytes = Botan::BigInt::encode_1363(scalar, ec_group.get_order_bytes());
-                  pcurves_timer->run([&]() { return Botan::PCurve::mul_by_g(id.value(), scalar_bytes); });
+                  if(auto curve = Botan::PCurve::PrimeOrderCurve::from_id(id.value())) {
+                     const auto scalar_bytes = Botan::BigInt::encode_1363(scalar, ec_group.get_order_bytes());
+
+                     if(auto s = curve->deserialize_scalar(scalar_bytes)) {
+                        pcurves_base_timer->run([&]() { return curve->mul_by_g(s.value(), rng()); });
+
+                        auto g = curve->generator();
+                        pcurves_var_timer->run([&]() { return curve->mul(g, s.value(), rng()); });
+                     }
+                  }
                }
    #endif
             }
@@ -1159,8 +1168,9 @@ class Speed final : public Command {
             record_result(mult_timer);
             record_result(blinded_mult_timer);
             record_result(blinded_var_mult_timer);
-            if(pcurves_timer->events() > 0) {
-               record_result(pcurves_timer);
+            if(pcurves_base_timer->events() > 0) {
+               record_result(pcurves_base_timer);
+               record_result(pcurves_var_timer);
             }
          }
       }

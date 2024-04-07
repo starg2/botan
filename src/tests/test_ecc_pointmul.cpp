@@ -34,9 +34,21 @@ class ECC_Basepoint_Pcurve_Mul_Tests final : public Text_Based_Test {
          const auto k_bytes = vars.get_req_bin("k");
          const auto P_bytes = vars.get_req_bin("P");
 
+         auto& rng = Test::rng();
+
          if(auto id = Botan::PCurve::PrimeOrderCurveId::from_string(group_id)) {
-            const auto pt = Botan::PCurve::mul_by_g(id.value(), k_bytes);
-            result.test_eq("pcurves point", pt, P_bytes);
+            if(auto curve = Botan::PCurve::PrimeOrderCurve::from_id(id.value())) {
+               if(auto scalar = curve->deserialize_scalar(k_bytes)) {
+                  auto pt2 = curve->mul_by_g(scalar.value(), rng).to_affine().serialize();
+                  result.test_eq("mul_by_g correct", pt2, P_bytes);
+
+                  auto g = curve->generator();
+                  auto pt3 = curve->mul(g, scalar.value(), rng).to_affine().serialize();
+                  result.test_eq("mul correct", pt3, P_bytes);
+               } else {
+                  result.test_failure("Curve rejected scalar input");
+               }
+            }
          }
 
          return result;

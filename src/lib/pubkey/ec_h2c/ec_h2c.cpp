@@ -17,11 +17,13 @@ EC_Point hash_to_curve_sswu(const EC_Group& group,
                             std::span<const uint8_t> domain_sep,
                             bool random_oracle) {
    if(auto group_id = PCurve::PrimeOrderCurveId::from_oid(group.get_curve_oid())) {
-      const auto pt = PCurve::hash_to_curve(*group_id, hash_fn, random_oracle, input, domain_sep);
-      return group.OS2ECP(pt);
-   } else {
-      throw Not_Implemented("The curve OID does not map to a known pcurve group");
+      if(auto curve = PCurve::PrimeOrderCurve::from_id(*group_id)) {
+         const auto pt = curve->hash_to_curve(hash_fn, input, domain_sep, random_oracle);
+         return group.OS2ECP(pt.to_affine().serialize());
+      }
    }
+
+   throw Not_Implemented("Hash to curve is not implemented for this curve");
 }
 
 }  // namespace Botan

@@ -128,7 +128,7 @@ class P521Rep final {
 };
 
 template <typename Rep>
-class IntMod {
+class IntMod final {
    private:
       static const constexpr auto P = Rep::P;
       static const constexpr size_t N = Rep::N;
@@ -326,6 +326,13 @@ class IntMod {
          return CT::is_not_equal(this->data(), other.data(), N).as_bool();
       }
 
+      constexpr std::array<W, Self::N> to_words() const { return Rep::from_rep(m_val); }
+
+      std::vector<uint8_t> serialize_to_vec() const {
+         const auto b = this->serialize();
+         return std::vector(b.begin(), b.end());
+      }
+
       constexpr std::array<uint8_t, Self::BYTES> serialize() const {
          auto v = Rep::from_rep(m_val);
          std::reverse(v.begin(), v.end());
@@ -340,6 +347,26 @@ class IntMod {
             copy_mem(out, std::span{bytes}.template subspan<extra, Self::BYTES>());
             return out;
          }
+      }
+
+      template <size_t L>
+      std::array<W, L> stash_value() const {
+         static_assert(L >= N);
+         std::array<W, L> stash = {};
+         for(size_t i = 0; i != N; ++i) {
+            stash[i] = m_val[i];
+         }
+         return stash;
+      }
+
+      template <size_t L>
+      static Self from_stash(const std::array<W, L>& stash) {
+         static_assert(L >= N);
+         std::array<W, N> val = {};
+         for(size_t i = 0; i != N; ++i) {
+            val[i] = stash[i];
+         }
+         return Self(val);
       }
 
       // Returns nullopt if the input is an encoding greater than or equal P
@@ -396,13 +423,19 @@ class IntMod {
       std::array<W, N> m_val;
 };
 
-template <typename FieldElement>
+template <typename FieldElement, typename Params>
 class AffineCurvePoint {
    public:
+      // We can't pass a FieldElement directly because FieldElement is
+      // not "structural" due to having private members, so instead
+      // recreate it here from the words.
+      static const constexpr FieldElement A = FieldElement::from_words(Params::AW);
+      static const constexpr FieldElement B = FieldElement::from_words(Params::BW);
+
       static const constinit size_t BYTES = 1 + 2 * FieldElement::BYTES;
       static const constinit size_t COMPRESSED_BYTES = 1 + FieldElement::BYTES;
 
-      typedef AffineCurvePoint<FieldElement> Self;
+      typedef AffineCurvePoint<FieldElement, Params> Self;
 
       constexpr AffineCurvePoint(const FieldElement& x, const FieldElement& y) : m_x(x), m_y(y) {}
 
@@ -419,9 +452,14 @@ class AffineCurvePoint {
 
       constexpr Self negate() const { return Self(x(), y().negate()); }
 
-      std::vector<uint8_t> serialize_to_vec() const {
-         const auto b = this->serialize();
-         return std::vector(b.begin(), b.end());
+      std::vector<uint8_t> serialize_to_vec(bool compress) const {
+         if(compress) {
+            const auto b = this->serialize_compressed();
+            return std::vector(b.begin(), b.end());
+         } else {
+            const auto b = this->serialize();
+            return std::vector(b.begin(), b.end());
+         }
       }
 
       constexpr std::array<uint8_t, Self::BYTES> serialize() const {
@@ -444,7 +482,63 @@ class AffineCurvePoint {
          return r;
       }
 
-      //static constexpr std::optional<Self> deserialize(std::span<const uint8_t> bytes) {}
+      /**
+      * If idx is zero then return the identity element. Otherwise return pts[idx - 1]
+      *
+      * Returns the identity element also if idx is out of range
+      */
+      static constexpr auto ct_select(std::span<const Self> pts, size_t idx) {
+         auto result = Self::identity();
+
+         // Intentionally wrapping; set to maximum size_t if idx == 0
+         const size_t idx1 = static_cast<size_t>(idx - 1);
+         for(size_t i = 0; i != pts.size(); ++i) {
+            const bool found = (idx1 == i);
+            result.conditional_assign(found, pts[i]);
+         }
+
+         return result;
+      }
+
+      static constexpr std::optional<Self> deserialize(std::span<const uint8_t> bytes) {
+         auto x3_ax_b = [](const FieldElement& x) { return (x.square() + Self::A) * x + Self::B; };
+
+         auto valid_xy = [x3_ax_b](const FieldElement& x, const FieldElement& y) { return (y.square() == x3_ax_b(x)); };
+
+         if(bytes.size() == Self::BYTES) {
+            if(bytes[0] != 0x04) {
+               return {};
+            }
+            auto x = FieldElement::deserialize(bytes.subspan(1, Self::BYTES));
+            auto y = FieldElement::deserialize(bytes.subspan(1 + Self::BYTES, Self::BYTES));
+
+            if(x && y) {
+               if(valid_xy(*x, *y)) {
+                  return Self(*x, *y);
+               }
+            }
+
+            return {};
+         } else if(bytes.size() == Self::COMPRESSED_BYTES) {
+            if(bytes[0] != 0x02 && bytes[0] != 0x03) {
+               return {};
+            }
+            const bool y_is_even = (bytes[0] == 0x02);
+
+            if(auto x = FieldElement::deserialize(bytes.subspan(1, Self::BYTES))) {
+               const auto y2 = x3_ax_b(*x);
+               auto y = y2.sqrt();
+               if(y_is_even && !y.is_even()) {
+                  y = y.negate();
+               }
+               return Self(*x, y);
+            }
+
+            return {};
+         } else {
+            return {};
+         }
+      }
 
       constexpr const FieldElement& x() const { return m_x; }
 
@@ -473,7 +567,7 @@ class ProjectiveCurvePoint {
       static const constexpr bool A_is_minus_3 = (A == FieldElement::constant(-3));
 
       typedef ProjectiveCurvePoint<FieldElement, Params> Self;
-      typedef AffineCurvePoint<FieldElement> AffinePoint;
+      typedef AffineCurvePoint<FieldElement, Params> AffinePoint;
 
       static constexpr Self from_affine(const AffinePoint& pt) {
          if(pt.is_identity()) {
@@ -637,6 +731,14 @@ class ProjectiveCurvePoint {
          return Self(X3, Y3, Z3);
       }
 
+      constexpr Self dbl_n(size_t n) const {
+         Self pt = (*this);
+         for(size_t i = 0; i != n; ++i) {
+            pt = pt.dbl();
+         }
+         return pt;
+      }
+
       constexpr Self dbl() const {
          //https://hyperelliptic.org/EFD/g1p/auto-shortw-jacobian.html#doubling-dbl-1998-cmo-2
 
@@ -757,101 +859,6 @@ class ProjectiveCurvePoint {
       FieldElement m_z;
 };
 
-template <typename AffinePoint, typename ProjectivePoint, typename Scalar>
-class PrecomputedMulTable {
-   public:
-      // TODO allow config?
-      static const constinit size_t WindowBits = 4;
-      static_assert(WindowBits >= 1 && WindowBits < 8);
-
-      // A bitmask that has the lowest WindowBits bits set
-      static const constinit uint8_t WindowMask = static_cast<uint8_t>(1 << WindowBits) - 1;
-
-      // TODO account for blinding
-      static const constinit size_t Windows = (Scalar::BITS + WindowBits - 1) / WindowBits;
-
-      // 2^W elements, less the identity element
-      static const constinit size_t WindowElements = (1 << WindowBits) - 1;
-
-      static const constinit size_t TableSize = Windows * WindowElements;
-
-      PrecomputedMulTable(const AffinePoint& p) : m_table{} {
-         std::vector<ProjectivePoint> table;
-         table.reserve(TableSize);
-
-         auto accum = ProjectivePoint::from_affine(p);
-
-         for(size_t i = 0; i != TableSize; i += WindowElements) {
-            table.push_back(accum);
-
-            for(size_t j = 1; j != WindowElements; ++j) {
-               if(j % 2 == 1) {
-                  table.push_back(table[i + j / 2].dbl());
-               } else {
-                  table.push_back(table[i + j - 1] + table[i]);
-               }
-            }
-
-            accum = table[i + (WindowElements / 2)].dbl();
-         }
-
-         m_table = ProjectivePoint::to_affine_batch(table);
-      }
-
-      ProjectivePoint operator()(const Scalar& s) const {
-         const auto bits = s.serialize();
-
-         auto accum = ProjectivePoint::identity();
-
-         for(size_t i = 0; i != Windows; ++i) {
-            const size_t w_i = get_window(bits, WindowBits * i);
-            accum += ct_select(&m_table[WindowElements * i], WindowElements, w_i);
-         }
-
-         return accum;
-      }
-
-   private:
-      // Extract a WindowBits sized window out of s, depending on offset.
-      static constexpr size_t get_window(std::span<const uint8_t> bytes, size_t offset) {
-         const auto bit_shift = offset % 8;
-         const auto byte_offset = bytes.size() - 1 - (offset / 8);
-
-         const bool single_byte_window = bit_shift <= (8 - WindowBits) || byte_offset == 0;
-
-         const auto w0 = bytes[byte_offset];
-
-         if(single_byte_window) {
-            return (w0 >> bit_shift) & WindowMask;
-         } else {
-            // Otherwise we must join two bytes and extract the result
-            const auto w1 = bytes[byte_offset - 1];
-            const auto combined = ((w0 >> bit_shift) | (w1 << (8 - bit_shift)));
-            return combined & WindowMask;
-         }
-      }
-
-      /**
-      * If we is zero then return the identity element. Otherwise return pts[we - 1]
-      *
-      * Returns the identity element also if we >= pt_len
-      */
-      static constexpr auto ct_select(const AffinePoint pts[], size_t pt_len, size_t we) {
-         auto result = AffinePoint::identity();
-
-         // Intentionally wrapping; set to maximum size_t if we == 0
-         const size_t idx = static_cast<size_t>(we - 1);
-         for(size_t i = 0; i != pt_len; ++i) {
-            const bool found = (idx == i);
-            result.conditional_assign(found, pts[i]);
-         }
-
-         return result;
-      }
-
-      std::vector<AffinePoint> m_table;
-};
-
 template <StringLiteral PS,
           StringLiteral AS,
           StringLiteral BS,
@@ -902,6 +909,7 @@ class EllipticCurve {
 
       static const constinit size_t OrderBits = Scalar::BITS;
       static const constinit size_t PrimeFieldBits = FieldElement::BITS;
+      static const constinit size_t BlindingBits = 128;
 
       static const constexpr FieldElement A = FieldElement::from_words(Params::AW);
       static const constexpr FieldElement B = FieldElement::from_words(Params::BW);
@@ -913,19 +921,10 @@ class EllipticCurve {
       static const constinit bool ValidForSswuHash =
          (SSWU_Z.is_nonzero() && A.is_nonzero() && B.is_nonzero() && FieldElement::P_MOD_4 == 3);
 
-      typedef AffineCurvePoint<FieldElement> AffinePoint;
+      typedef AffineCurvePoint<FieldElement, Params> AffinePoint;
       typedef ProjectiveCurvePoint<FieldElement, Params> ProjectivePoint;
 
       static const constexpr AffinePoint G = AffinePoint(Gx, Gy);
-
-      typedef PrecomputedMulTable<AffinePoint, ProjectivePoint, Scalar> MulTable;
-
-      static const MulTable& MulByGTable() {
-         static const auto MulG = MulTable(G);
-         return MulG;
-      }
-
-      static ProjectivePoint MulByG(const Scalar& scalar) { return MulByGTable()(scalar); }
 
       // (-B / A), will be zero if A == 0 or B == 0 or Z == 0
       template <typename = typename std::enable_if<ValidForSswuHash>>
@@ -942,6 +941,168 @@ class EllipticCurve {
          static const auto C2 = (B * (SSWU_Z * A).invert());
          return C2;
       }
+};
+
+template <typename C, size_t WindowBits>
+class ScalarBits final {
+   private:
+      // A bitmask that has the lowest WindowBits bits set
+      static const constinit uint8_t WindowMask = static_cast<uint8_t>(1 << WindowBits) - 1;
+
+      typedef typename C::W W;
+
+   public:
+      ScalarBits(const typename C::Scalar& scalar, RandomNumberGenerator& rng) {
+         static_assert(C::BlindingBits % 8 == 0);
+         static_assert(C::BlindingBits < C::Scalar::BITS);
+
+         const size_t mask_bytes = C::BlindingBits / 8;
+         const size_t mask_words = (mask_bytes + WordInfo<W>::bytes - 1) / WordInfo<W>::bytes;
+
+         uint8_t maskb[mask_bytes] = {0};
+         rng.randomize(maskb, mask_bytes);
+
+         W mask[mask_words];
+         load_le(mask, maskb, mask_words);
+
+         auto s = scalar.serialize();
+         m_bytes.assign(s.begin(), s.end());
+      }
+
+      // Extract a WindowBits sized window out of s, depending on offset.
+      size_t get_window(size_t offset) const {
+         const auto bit_shift = offset % 8;
+         const auto byte_offset = m_bytes.size() - 1 - (offset / 8);
+
+         const bool single_byte_window = bit_shift <= (8 - WindowBits) || byte_offset == 0;
+
+         const auto w0 = m_bytes[byte_offset];
+
+         if(single_byte_window) {
+            return (w0 >> bit_shift) & WindowMask;
+         } else {
+            // Otherwise we must join two bytes and extract the result
+            const auto w1 = m_bytes[byte_offset - 1];
+            const auto combined = ((w0 >> bit_shift) | (w1 << (8 - bit_shift)));
+            return combined & WindowMask;
+         }
+      }
+
+   private:
+      // secure_vector?
+      std::vector<uint8_t> m_bytes;
+};
+
+template <typename C>
+class PrecomputedMulTable final {
+   public:
+      typedef typename C::Scalar Scalar;
+      typedef typename C::AffinePoint AffinePoint;
+      typedef typename C::ProjectivePoint ProjectivePoint;
+
+      // TODO allow config?
+      static const constinit size_t WindowBits = 4;
+      static_assert(WindowBits >= 1 && WindowBits < 8);
+
+      static const constinit size_t Windows = (Scalar::BITS + WindowBits - 1) / WindowBits;
+
+      // 2^W elements, less the identity element
+      static const constinit size_t WindowElements = (1 << WindowBits) - 1;
+
+      static const constinit size_t TableSize = Windows * WindowElements;
+
+      PrecomputedMulTable(const AffinePoint& p) : m_table{} {
+         std::vector<ProjectivePoint> table;
+         table.reserve(TableSize);
+
+         auto accum = ProjectivePoint::from_affine(p);
+
+         for(size_t i = 0; i != TableSize; i += WindowElements) {
+            table.push_back(accum);
+
+            for(size_t j = 1; j != WindowElements; ++j) {
+               if(j % 2 == 1) {
+                  table.push_back(table[i + j / 2].dbl());
+               } else {
+                  table.push_back(table[i + j - 1] + table[i]);
+               }
+            }
+
+            accum = table[i + (WindowElements / 2)].dbl();
+         }
+
+         m_table = ProjectivePoint::to_affine_batch(table);
+      }
+
+      ProjectivePoint mul(const Scalar& s, RandomNumberGenerator& rng) const {
+         const ScalarBits<C, WindowBits> bits(s, rng);
+
+         auto accum = ProjectivePoint::identity();
+
+         for(size_t i = 0; i != Windows; ++i) {
+            const size_t w_i = bits.get_window(WindowBits * i);
+
+            auto tbl_i = std::span{m_table.begin() + WindowElements * i, WindowElements};
+            accum += AffinePoint::ct_select(tbl_i, w_i);
+         }
+
+         return accum;
+      }
+
+   private:
+      std::vector<AffinePoint> m_table;
+};
+
+template <typename C, size_t W = 5>
+class WindowedMulTable final {
+   public:
+      typedef typename C::Scalar Scalar;
+      typedef typename C::AffinePoint AffinePoint;
+      typedef typename C::ProjectivePoint ProjectivePoint;
+
+      static const constinit size_t WindowBits = W;
+      static_assert(WindowBits >= 1 && WindowBits < 6);
+
+      static const constinit size_t Windows = (C::Scalar::BITS + WindowBits - 1) / WindowBits;
+
+      // 2^W elements, less the identity element
+      static const constinit size_t TableSize = (1 << WindowBits) - 1;
+
+      WindowedMulTable(const AffinePoint& p) : m_table{} {
+         std::vector<ProjectivePoint> table;
+         table.reserve(TableSize);
+
+         table.push_back(ProjectivePoint::from_affine(p));
+         for(size_t i = 1; i != TableSize; ++i) {
+            if(i % 2 == 1) {
+               table.push_back(table[i / 2].dbl());
+            } else {
+               table.push_back(table[i - 1] + table[0]);
+            }
+         }
+
+         m_table = ProjectivePoint::to_affine_batch(table);
+      }
+
+      ProjectivePoint mul(const Scalar& s, RandomNumberGenerator& rng) const {
+         const ScalarBits<C, WindowBits> bits(s, rng);
+
+         auto accum = ProjectivePoint::identity();
+
+         for(size_t i = 0; i != Windows; ++i) {
+            if(i > 0) {
+               accum = accum.dbl_n(WindowBits);
+            }
+            const size_t w_i = bits.get_window((Windows - i - 1) * WindowBits);
+
+            accum += AffinePoint::ct_select(m_table, w_i);
+         }
+
+         return accum;
+      }
+
+   private:
+      std::vector<AffinePoint> m_table;
 };
 
 template <typename C>
@@ -971,10 +1132,10 @@ inline auto map_to_curve_sswu(const typename C::FieldElement& u) -> typename C::
 }
 
 template <typename C>
-inline std::vector<uint8_t> hash_to_curve_sswu(std::string_view hash,
-                                               bool random_oracle,
-                                               std::span<const uint8_t> pw,
-                                               std::span<const uint8_t> dst) {
+inline auto hash_to_curve_sswu(std::string_view hash,
+                               bool random_oracle,
+                               std::span<const uint8_t> pw,
+                               std::span<const uint8_t> dst) -> typename C::ProjectivePoint {
    static_assert(C::ValidForSswuHash);
 
    const size_t SecurityLevel = (C::OrderBits + 1) / 2;
@@ -992,7 +1153,7 @@ inline std::vector<uint8_t> hash_to_curve_sswu(std::string_view hash,
       pt += map_to_curve_sswu<C>(u);
    }
 
-   return pt.to_affine().serialize_to_vec();
+   return pt;
 }
 
 }  // namespace Botan
