@@ -1130,7 +1130,7 @@ class Speed final : public Command {
 
             while(mult_timer->under(runtime) && blinded_mult_timer->under(runtime) &&
                   blinded_var_mult_timer->under(runtime)) {
-               const Botan::BigInt scalar(rng(), ec_group.get_p_bits());
+               const Botan::BigInt scalar = ec_group.random_scalar(rng());
 
                const Botan::EC_Point r1 = mult_timer->run([&]() { return base_point * scalar; });
 
