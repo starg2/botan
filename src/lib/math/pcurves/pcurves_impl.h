@@ -613,9 +613,9 @@ class ProjectiveCurvePoint {
          return AffinePoint(x, y);
       }
 
-      template <size_t N>
-      static constexpr auto to_affine_batch(const std::array<Self, N>& projective) -> std::array<AffinePoint, N> {
-         std::array<AffinePoint, N> affine;
+      static std::vector<AffinePoint> to_affine_batch(std::span<const Self> projective) {
+         const size_t N = projective.size();
+         std::vector<AffinePoint> affine(N, AffinePoint::identity());
 
          bool any_identity = false;
          for(size_t i = 0; i != N; ++i) {
@@ -629,7 +629,7 @@ class ProjectiveCurvePoint {
                affine[i] = projective[i].to_affine();
             }
          } else {
-            std::array<FieldElement, N> c;
+            std::vector<FieldElement> c(N);
 
             /*
             Batch projective->affine using Montgomery's trick
@@ -695,32 +695,30 @@ class PrecomputedMulTable {
 
       static const constinit size_t TableSize = Windows * WindowElements;
 
-      constexpr PrecomputedMulTable(const AffinePoint& p) : m_table{} {
-         std::array<ProjectivePoint, TableSize> table;
+      PrecomputedMulTable(const AffinePoint& p) : m_table{} {
+         std::vector<ProjectivePoint> table;
+         table.reserve(TableSize);
 
          auto accum = ProjectivePoint::from_affine(p);
 
-         for(size_t i = 0; i != Windows; ++i) {
-            // Data for the i'th window element, WindowElements long
-            auto* window_i = &table[WindowElements * i];
-
-            window_i[0] = accum;
+         for(size_t i = 0; i != TableSize; i += WindowElements) {
+            table.push_back(accum);
 
             for(size_t j = 1; j != WindowElements; ++j) {
                if(j % 2 == 1) {
-                  window_i[j] = window_i[j / 2].dbl();
+                  table.push_back(table[i + j / 2].dbl());
                } else {
-                  window_i[j] = window_i[j - 1] + window_i[0];
+                  table.push_back(table[i + j - 1] + table[i]);
                }
             }
 
-            accum = window_i[WindowElements / 2].dbl();
+            accum = table[i + (WindowElements / 2)].dbl();
          }
 
          m_table = ProjectivePoint::to_affine_batch(table);
       }
 
-      constexpr ProjectivePoint operator()(const Scalar& s) const {
+      ProjectivePoint operator()(const Scalar& s) const {
          const auto bits = s.serialize();
 
          auto accum = ProjectivePoint::identity();
@@ -771,7 +769,7 @@ class PrecomputedMulTable {
          return result;
       }
 
-      std::array<AffinePoint, TableSize> m_table;
+      std::vector<AffinePoint> m_table;
 };
 
 template <StringLiteral PS,
