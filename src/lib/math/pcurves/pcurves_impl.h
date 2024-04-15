@@ -16,14 +16,16 @@
 
 namespace Botan {
 
-template <WordType W, size_t N, std::array<W, N> P>
+template <typename Params>
 class MontgomeryInteger {
    private:
-      static_assert(N > 0 && (P[0] & 1) == 1, "Invalid Montgomery modulus");
-      // One can dream
-      //static_assert(is_prime(P), "Montgomery Modulus must be a prime");
+      static const constexpr auto P = Params::P;
+      static const constexpr size_t N = Params::N;
+      typedef typename Params::W W;
 
-      static const constinit W P_dash = monty_inverse(P[0]);
+      static_assert(N > 0 && (P[0] & 1) == 1, "Invalid Montgomery modulus");
+
+      static const constinit auto P_dash = monty_inverse(Params::P[0]);
 
       static const constexpr auto R1 = montygomery_r(P);
       static const constexpr auto R2 = mul_mod(R1, R1, P);
@@ -37,9 +39,9 @@ class MontgomeryInteger {
       static const constexpr size_t BITS = count_bits(P);
       static const constexpr size_t BYTES = (BITS + 7) / 8;
 
-      static const constexpr W P_MOD_4 = P[0] % 4;
+      static const constexpr auto P_MOD_4 = P[0] % 4;
 
-      typedef MontgomeryInteger<W, N, P> Self;
+      typedef MontgomeryInteger<Params> Self;
 
       // Default value is zero
       constexpr MontgomeryInteger() : m_val({}) {}
@@ -282,16 +284,6 @@ class MontgomeryInteger {
          }
       }
 
-      template <size_t L>
-      static consteval Self constant(StringLiteral<L> S) {
-         return Self::constant(S.value);
-      }
-
-      template <size_t L>
-      static consteval Self constant(const char (&s)[L]) {
-         return Self::from_words(hex_to_words<W>(s));
-      }
-
       static consteval Self constant(int8_t x) {
          std::array<W, 1> v;
          v[0] = (x >= 0) ? x : -x;
@@ -379,19 +371,19 @@ class AffineCurvePoint {
       FieldElement m_y;
 };
 
-template <typename FieldElement, WordType W, size_t AL, std::array<W, AL> AW>
+template <typename FieldElement, typename Params>
 class ProjectiveCurvePoint {
    public:
       // We can't pass a FieldElement directly because FieldElement is
       // not "structural" due to having private members, so instead
       // recreate it here from the words.
-      static const constexpr FieldElement A = FieldElement::from_words(AW);
+      static const constexpr FieldElement A = FieldElement::from_words(Params::AW);
 
       static const constinit bool A_is_zero = A.is_zero();
       // Should be constinit but this triggers a bug in Clang
       static const constexpr bool A_is_minus_3 = (A == FieldElement::constant(-3));
 
-      typedef ProjectiveCurvePoint<FieldElement, W, AL, AW> Self;
+      typedef ProjectiveCurvePoint<FieldElement, Params> Self;
       typedef AffineCurvePoint<FieldElement> AffinePoint;
 
       static constexpr Self from_affine(const AffinePoint& pt) {
@@ -778,37 +770,63 @@ template <StringLiteral PS,
           StringLiteral NS,
           StringLiteral GXS,
           StringLiteral GYS,
-          int8_t Z = 0,
-          template <WordType W, size_t N, std::array<W, N> P> typename FieldType = MontgomeryInteger>
-class EllipticCurve {
+          int8_t ZI = 0>
+class EllipticCurveParameters {
    public:
       typedef word W;
 
       static const constexpr auto PW = hex_to_words<W>(PS.value);
       static const constexpr auto NW = hex_to_words<W>(NS.value);
       static const constexpr auto AW = hex_to_words<W>(AS.value);
+      static const constexpr auto BW = hex_to_words<W>(BS.value);
+      static const constexpr auto GXW = hex_to_words<W>(GXS.value);
+      static const constexpr auto GYW = hex_to_words<W>(GYS.value);
+
+      static const constexpr int8_t Z = ZI;
+};
+
+template <WordType WI, size_t NI, std::array<WI, NI> PI>
+struct IntParams {
+   public:
+      typedef WI W;
+      static constexpr size_t N = NI;
+      static constexpr auto P = PI;
+};
+
+template <typename Params, template <typename FieldParams> typename FieldType = MontgomeryInteger>
+class EllipticCurve {
+   public:
+      typedef word W;
+
+      static const constexpr auto PW = Params::PW;
+      static const constexpr auto NW = Params::NW;
+      static const constexpr auto AW = Params::AW;
 
       // Simplifying assumption
       static_assert(PW.size() == NW.size());
 
-      typedef MontgomeryInteger<W, NW.size(), NW> Scalar;
-      typedef FieldType<W, PW.size(), PW> FieldElement;
+      class ScalarParams final : public IntParams<W, NW.size(), NW> {};
+
+      class FieldParams final : public IntParams<W, PW.size(), PW> {};
+
+      typedef MontgomeryInteger<ScalarParams> Scalar;
+      typedef FieldType<FieldParams> FieldElement;
 
       static const constinit size_t OrderBits = Scalar::BITS;
       static const constinit size_t PrimeFieldBits = FieldElement::BITS;
 
-      static const constexpr FieldElement A = FieldElement::constant(AS);
-      static const constexpr FieldElement B = FieldElement::constant(BS);
-      static const constexpr FieldElement Gx = FieldElement::constant(GXS);
-      static const constexpr FieldElement Gy = FieldElement::constant(GYS);
+      static const constexpr FieldElement A = FieldElement::from_words(Params::AW);
+      static const constexpr FieldElement B = FieldElement::from_words(Params::BW);
+      static const constexpr FieldElement Gx = FieldElement::from_words(Params::GXW);
+      static const constexpr FieldElement Gy = FieldElement::from_words(Params::GYW);
 
-      static const constexpr FieldElement SSWU_Z = FieldElement::constant(Z);
+      static const constexpr FieldElement SSWU_Z = FieldElement::constant(Params::Z);
 
       static const constinit bool ValidForSswuHash =
          (SSWU_Z.is_nonzero() && A.is_nonzero() && B.is_nonzero() && FieldElement::P_MOD_4 == 3);
 
       typedef AffineCurvePoint<FieldElement> AffinePoint;
-      typedef ProjectiveCurvePoint<FieldElement, W, AW.size(), AW> ProjectivePoint;
+      typedef ProjectiveCurvePoint<FieldElement, Params> ProjectivePoint;
 
       static const constexpr AffinePoint G = AffinePoint(Gx, Gy);
 
