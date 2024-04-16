@@ -17,19 +17,110 @@
 namespace Botan {
 
 template <typename Params>
-class MontgomeryInteger {
-   private:
+class MontgomeryRep final {
+   public:
       static const constexpr auto P = Params::P;
       static const constexpr size_t N = Params::N;
       typedef typename Params::W W;
 
-      static_assert(N > 0 && (P[0] & 1) == 1, "Invalid Montgomery modulus");
+      static_assert(N > 0 && (Params::P[0] & 1) == 1, "Invalid Montgomery modulus");
 
-      static const constinit auto P_dash = monty_inverse(Params::P[0]);
+      static const constinit auto P_dash = monty_inverse(P[0]);
 
       static const constexpr auto R1 = montygomery_r(P);
       static const constexpr auto R2 = mul_mod(R1, R1, P);
       static const constexpr auto R3 = mul_mod(R1, R2, P);
+
+      constexpr static std::array<W, N> one() { return R1; }
+
+      constexpr static std::array<W, N> redc(const std::array<W, 2 * N>& z) { return bigint_monty_redc(z, P, P_dash); }
+
+      constexpr static std::array<W, N> to_rep(const std::array<W, N>& x) {
+         std::array<W, 2 * N> z;
+         comba_mul<N>(z.data(), x.data(), R2.data());
+         return bigint_monty_redc(z, P, P_dash);
+      }
+
+      constexpr static std::array<W, N> wide_to_rep(const std::array<W, 2 * N>& x) {
+         auto redc_x = bigint_monty_redc(x, P, P_dash);
+         std::array<W, 2 * N> z;
+         comba_mul<N>(z.data(), redc_x.data(), R3.data());
+         return bigint_monty_redc(z, P, P_dash);
+      }
+
+      constexpr static std::array<W, N> from_rep(const std::array<W, N>& z) { return bigint_monty_redc(z, P, P_dash); }
+};
+
+template <typename Params>
+class P521Rep final {
+   private:
+      template <WordType W, size_t N>
+      static consteval bool is_p521(const std::array<W, N>& p) {
+         if constexpr(N != (521 + WordInfo<W>::bits - 1) / WordInfo<W>::bits) {
+            return false;
+         }
+
+         if(p[N - 1] != 0x1FF) {
+            return false;
+         }
+         for(size_t i = 0; i != N - 1; ++i) {
+            if(~p[i] != 0) {
+               return false;
+            }
+         }
+
+         return true;
+      }
+
+   public:
+      static const constexpr auto P = Params::P;
+      static const constexpr size_t N = Params::N;
+      typedef typename Params::W W;
+
+      static_assert(is_p521(P));
+
+      constexpr static std::array<W, N> one() {
+         std::array<W, N> one = {};
+         one[0] = 1;
+         return one;
+      }
+
+      constexpr static std::array<W, N> redc(const std::array<W, 2 * N>& z) {
+         constexpr W TOP_MASK = static_cast<W>(0x1FF);
+
+         std::array<W, N> hi = {};
+         std::copy(z.begin() + N - 1, z.begin() + 2 * N - 1, hi.begin());
+         shift_right<9>(hi);
+
+         std::array<W, N> lo = {};
+         std::copy(z.begin(), z.begin() + N, lo.begin());
+         lo[N - 1] &= TOP_MASK;
+
+         // s = hi + lo
+         std::array<W, N> s = {};
+         // Will never carry out
+         word carry = bigint_add3_nc(s.data(), lo.data(), N, hi.data(), N);
+
+         // But might be greater than modulus:
+         std::array<W, N> r = {};
+         bigint_monty_maybe_sub<N>(r.data(), carry, s.data(), P.data());
+
+         return r;
+      }
+
+      constexpr static std::array<W, N> to_rep(const std::array<W, N>& x) { return x; }
+
+      constexpr static std::array<W, N> wide_to_rep(const std::array<W, 2 * N>& x) { return redc(x); }
+
+      constexpr static std::array<W, N> from_rep(const std::array<W, N>& z) { return z; }
+};
+
+template <typename Rep>
+class IntMod {
+   private:
+      static const constexpr auto P = Rep::P;
+      static const constexpr size_t N = Rep::N;
+      typedef typename Rep::W W;
 
       static const constexpr auto P_MINUS_2 = p_minus<2>(P);
       static const constexpr auto P_PLUS_1_OVER_4 = p_plus_1_over_4(P);
@@ -41,31 +132,40 @@ class MontgomeryInteger {
 
       static const constexpr auto P_MOD_4 = P[0] % 4;
 
-      typedef MontgomeryInteger<Params> Self;
+      typedef IntMod<Rep> Self;
 
       // Default value is zero
-      constexpr MontgomeryInteger() : m_val({}) {}
+      constexpr IntMod() : m_val({}) {}
 
-      MontgomeryInteger(const Self& other) = default;
-      MontgomeryInteger(Self&& other) = default;
-      MontgomeryInteger& operator=(const Self& other) = default;
-      MontgomeryInteger& operator=(Self&& other) = default;
+      IntMod(const Self& other) = default;
+      IntMod(Self&& other) = default;
+      IntMod& operator=(const Self& other) = default;
+      IntMod& operator=(Self&& other) = default;
 
       // ??
-      //~MontgomeryInteger() { secure_scrub_memory(m_val); }
+      //~IntMod() { secure_scrub_memory(m_val); }
 
       static constexpr Self zero() { return Self(std::array<W, N>{0}); }
 
-      static constexpr Self one() { return Self(Self::R1); }
+      static constexpr Self one() { return Self(Rep::one()); }
 
       static constexpr Self from_word(W x) {
          std::array<W, 1> v{x};
          return Self::from_words(v);
       }
 
-      template <size_t S>
-      static constexpr Self from_words(std::array<W, S> w) {
-         return Self(w) * Self::R2;
+      template <size_t L>
+      static constexpr Self from_words(std::array<W, L> w) {
+         if constexpr(L == N) {
+            return Self(Rep::to_rep(w));
+         } else {
+            static_assert(L < N);
+            std::array<W, N> ew = {};
+            for(size_t i = 0; i != L; ++i) {
+               ew[i] = w[i];
+            }
+            return Self(Rep::to_rep(ew));
+         }
       }
 
       constexpr bool is_zero() const { return CT::all_zeros(m_val.data(), m_val.size()).as_bool(); }
@@ -75,7 +175,7 @@ class MontgomeryInteger {
       constexpr bool is_one() const { return (*this == Self::one()); }
 
       constexpr bool is_even() const {
-         auto v = bigint_monty_redc(m_val, P, P_dash);
+         auto v = Rep::from_rep(m_val);
          return (v[0] & 0x01) == 0;
       }
 
@@ -120,16 +220,18 @@ class MontgomeryInteger {
       friend constexpr Self operator*(const Self& a, const Self& b) {
          std::array<W, 2 * N> z;
          comba_mul<N>(z.data(), a.data(), b.data());
-         return Self(bigint_monty_redc(z, P, P_dash));
+         return Self(Rep::redc(z));
       }
 
       constexpr Self& operator-=(const Self& other) {
-         (*this) = (*this) - other;
+         (*this) += other.negate();
          return (*this);
       }
 
       constexpr Self& operator*=(const Self& other) {
-         (*this) = (*this) * other;
+         std::array<W, 2 * N> z;
+         comba_mul<N>(z.data(), data(), other.data());
+         m_val = Rep::redc(z);
          return (*this);
       }
 
@@ -147,7 +249,7 @@ class MontgomeryInteger {
       constexpr Self square() const {
          std::array<W, 2 * N> z;
          comba_sqr<N>(z.data(), this->data());
-         return bigint_monty_redc(z, P, P_dash);
+         return Self(Rep::redc(z));
       }
 
       // Negation modulo p
@@ -213,7 +315,7 @@ class MontgomeryInteger {
       }
 
       constexpr std::array<uint8_t, Self::BYTES> serialize() const {
-         auto v = bigint_monty_redc(m_val, P, P_dash);
+         auto v = Rep::from_rep(m_val);
          std::reverse(v.begin(), v.end());
          auto bytes = store_be(v);
 
@@ -250,28 +352,9 @@ class MontgomeryInteger {
       template <size_t L>
       static constexpr Self from_wide_bytes(std::span<const uint8_t, L> bytes) {
          static_assert(8 * L <= 2 * Self::BITS);
-
          std::array<uint8_t, 2 * BYTES> padded_bytes = {};
          copy_mem(padded_bytes.data() + 2 * BYTES - L, bytes.data(), L);
-
-         if constexpr(Self::BITS == 521) {
-            // This could be improved!
-            const auto radix = Self::from_word(256);
-
-            auto accum = Self::zero();
-
-            for(size_t i = 0; i != L; ++i) {
-               accum *= radix;
-               accum += Self::from_word(bytes[i]);
-            }
-            return accum;
-         } else {
-            static_assert(8 * Self::BYTES == Self::BITS);
-
-            const std::array<W, N> hi = bytes_to_words<W, N, BYTES>(&padded_bytes[0]);
-            const std::array<W, N> lo = bytes_to_words<W, N, BYTES>(&padded_bytes[BYTES]);
-            return Self(hi) * Self::R3 + Self::from_words(lo);
-         }
+         return Self(Rep::wide_to_rep(bytes_to_words<W, 2 * N, 2 * BYTES>(&padded_bytes[0])));
       }
 
       static constexpr Self random(RandomNumberGenerator& rng) {
@@ -296,13 +379,7 @@ class MontgomeryInteger {
 
       constexpr const W* data() const { return m_val.data(); }
 
-      template <size_t S>
-      constexpr MontgomeryInteger(std::array<W, S> w) : m_val({}) {
-         static_assert(S <= N);
-         for(size_t i = 0; i != S; ++i) {
-            m_val[i] = w[i];
-         }
-      }
+      explicit constexpr IntMod(std::array<W, N> v) : m_val(v) {}
 
       std::array<W, N> m_val;
 };
@@ -394,12 +471,10 @@ class ProjectiveCurvePoint {
          }
       }
 
-      static constexpr Self identity() {
-         return Self(FieldElement::zero(), FieldElement::zero(), FieldElement::zero());
-      }
+      static constexpr Self identity() { return Self(FieldElement::zero(), FieldElement::one(), FieldElement::zero()); }
 
       constexpr ProjectiveCurvePoint() :
-            m_x(FieldElement::zero()), m_y(FieldElement::zero()), m_z(FieldElement::zero()) {}
+            m_x(FieldElement::zero()), m_y(FieldElement::one()), m_z(FieldElement::zero()) {}
 
       constexpr ProjectiveCurvePoint(const FieldElement& x, const FieldElement& y) :
             m_x(x), m_y(y), m_z(FieldElement::one()) {}
@@ -456,6 +531,7 @@ class ProjectiveCurvePoint {
          /*
          https://hyperelliptic.org/EFD/g1p/auto-shortw-jacobian-3.html#addition-add-1998-cmo-2
 
+         // 12M + 4S + 6add + 1*2
          TODO rename these vars
 
          TODO reduce vars
@@ -793,7 +869,7 @@ struct IntParams {
       static constexpr auto P = PI;
 };
 
-template <typename Params, template <typename FieldParams> typename FieldType = MontgomeryInteger>
+template <typename Params, template <typename FieldParams> typename FieldRep = MontgomeryRep>
 class EllipticCurve {
    public:
       typedef word W;
@@ -809,8 +885,8 @@ class EllipticCurve {
 
       class FieldParams final : public IntParams<W, PW.size(), PW> {};
 
-      typedef MontgomeryInteger<ScalarParams> Scalar;
-      typedef FieldType<FieldParams> FieldElement;
+      typedef IntMod<MontgomeryRep<ScalarParams>> Scalar;
+      typedef IntMod<FieldRep<FieldParams>> FieldElement;
 
       static const constinit size_t OrderBits = Scalar::BITS;
       static const constinit size_t PrimeFieldBits = FieldElement::BITS;

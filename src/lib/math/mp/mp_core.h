@@ -855,7 +855,7 @@ inline constexpr W shift_left(std::array<W, N>& x) {
 }
 
 template <size_t S, WordType W, size_t N>
-inline consteval W shift_right(std::array<W, N>& x) {
+inline constexpr W shift_right(std::array<W, N>& x) {
    static_assert(S < WordInfo<W>::bits, "Shift too large");
 
    W carry = 0;

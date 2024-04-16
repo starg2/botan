@@ -56,7 +56,7 @@ class Params final : public EllipticCurveParameters<
    -4> {
 };
 
-class Curve final : public EllipticCurve<Params> {};
+class Curve final : public EllipticCurve<Params, P521Rep> {};
 
 }
 
