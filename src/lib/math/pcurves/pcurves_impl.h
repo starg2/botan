@@ -397,13 +397,10 @@ class IntMod final {
       }
 
       static constexpr Self random(RandomNumberGenerator& rng) {
-         std::array<uint8_t, Self::BYTES> buf;
-         for(;;) {
-            rng.randomize(buf);
-            if(auto v = Self::deserialize(buf)) {
-               return v;
-            }
-         }
+         const size_t R_bytes = Self::BYTES + 16;
+         std::array<uint8_t, R_bytes> buf;
+         rng.randomize(buf);
+         return Self::from_wide_bytes(std::span<const uint8_t, R_bytes>{buf});
       }
 
       static consteval Self constant(int8_t x) {
@@ -847,6 +844,17 @@ class ProjectiveCurvePoint {
          return affine;
       }
 
+      void randomize_rep(RandomNumberGenerator& rng) {
+         auto r = FieldElement::random(rng);
+
+         auto r2 = r.square();
+         auto r3 = r2 * r;
+
+         m_x *= r2;
+         m_y *= r3;
+         m_z *= r;
+      }
+
       constexpr const FieldElement& x() const { return m_x; }
 
       constexpr const FieldElement& y() const { return m_y; }
@@ -909,7 +917,10 @@ class EllipticCurve {
 
       static const constinit size_t OrderBits = Scalar::BITS;
       static const constinit size_t PrimeFieldBits = FieldElement::BITS;
-      static const constinit size_t BlindingBits = 128;
+
+      // Use 1/3 the order, rounded up to the next word for blinding
+      static const constinit size_t BlindingBits =
+         ((OrderBits / 3 + WordInfo<W>::bits - 1) / WordInfo<W>::bits) * WordInfo<W>::bits;
 
       static const constexpr FieldElement A = FieldElement::from_words(Params::AW);
       static const constexpr FieldElement B = FieldElement::from_words(Params::BW);
@@ -944,29 +955,41 @@ class EllipticCurve {
 };
 
 template <typename C, size_t WindowBits>
-class ScalarBits final {
+class BlindedScalarBits final {
    private:
+      typedef typename C::W W;
+
+      static_assert(C::BlindingBits % WordInfo<W>::bits == 0);
+      static_assert(C::BlindingBits < C::Scalar::BITS);
+
       // A bitmask that has the lowest WindowBits bits set
       static const constinit uint8_t WindowMask = static_cast<uint8_t>(1 << WindowBits) - 1;
 
-      typedef typename C::W W;
-
    public:
-      ScalarBits(const typename C::Scalar& scalar, RandomNumberGenerator& rng) {
-         static_assert(C::BlindingBits % 8 == 0);
-         static_assert(C::BlindingBits < C::Scalar::BITS);
+      static constexpr size_t Bits = C::Scalar::BITS + C::BlindingBits;
 
-         const size_t mask_bytes = C::BlindingBits / 8;
-         const size_t mask_words = (mask_bytes + WordInfo<W>::bytes - 1) / WordInfo<W>::bytes;
+      BlindedScalarBits(const typename C::Scalar& scalar, RandomNumberGenerator& rng) {
+         const size_t mask_words = C::BlindingBits / WordInfo<W>::bits;
+         const size_t mask_bytes = mask_words * WordInfo<W>::bytes;
+
+         const size_t n_words = C::NW.size();
 
          uint8_t maskb[mask_bytes] = {0};
          rng.randomize(maskb, mask_bytes);
 
-         W mask[mask_words];
-         load_le(mask, maskb, mask_words);
+         W mask[n_words] = {0};
+         load_be(mask, maskb, mask_words);
 
-         auto s = scalar.serialize();
-         m_bytes.assign(s.begin(), s.end());
+         W mask_n[2 * n_words] = {0};
+
+         const auto sw = scalar.to_words();
+
+         // Compute masked scalar s + k*n
+         comba_mul<n_words>(mask_n, mask, C::NW.data());
+         bigint_add2_nc(mask_n, 2 * n_words, sw.data(), sw.size());
+
+         std::reverse(mask_n, mask_n + 2 * n_words);
+         m_bytes = store_be<std::vector<uint8_t>>(mask_n);
       }
 
       // Extract a WindowBits sized window out of s, depending on offset.
@@ -1004,7 +1027,9 @@ class PrecomputedMulTable final {
       static const constinit size_t WindowBits = 4;
       static_assert(WindowBits >= 1 && WindowBits < 8);
 
-      static const constinit size_t Windows = (Scalar::BITS + WindowBits - 1) / WindowBits;
+      typedef BlindedScalarBits<C, WindowBits> BlindedScalar;
+
+      static const constinit size_t Windows = (BlindedScalar::Bits + WindowBits - 1) / WindowBits;
 
       // 2^W elements, less the identity element
       static const constinit size_t WindowElements = (1 << WindowBits) - 1;
@@ -1035,7 +1060,7 @@ class PrecomputedMulTable final {
       }
 
       ProjectivePoint mul(const Scalar& s, RandomNumberGenerator& rng) const {
-         const ScalarBits<C, WindowBits> bits(s, rng);
+         const BlindedScalar bits(s, rng);
 
          auto accum = ProjectivePoint::identity();
 
@@ -1044,6 +1069,10 @@ class PrecomputedMulTable final {
 
             auto tbl_i = std::span{m_table.begin() + WindowElements * i, WindowElements};
             accum += AffinePoint::ct_select(tbl_i, w_i);
+
+            if(i == 0 || i == Windows / 2) {
+               accum.randomize_rep(rng);
+            }
          }
 
          return accum;
@@ -1063,7 +1092,9 @@ class WindowedMulTable final {
       static const constinit size_t WindowBits = W;
       static_assert(WindowBits >= 1 && WindowBits < 6);
 
-      static const constinit size_t Windows = (C::Scalar::BITS + WindowBits - 1) / WindowBits;
+      typedef BlindedScalarBits<C, WindowBits> BlindedScalar;
+
+      static const constinit size_t Windows = (BlindedScalar::Bits + WindowBits - 1) / WindowBits;
 
       // 2^W elements, less the identity element
       static const constinit size_t TableSize = (1 << WindowBits) - 1;
@@ -1085,7 +1116,7 @@ class WindowedMulTable final {
       }
 
       ProjectivePoint mul(const Scalar& s, RandomNumberGenerator& rng) const {
-         const ScalarBits<C, WindowBits> bits(s, rng);
+         const BlindedScalar bits(s, rng);
 
          auto accum = ProjectivePoint::identity();
 
@@ -1096,6 +1127,10 @@ class WindowedMulTable final {
             const size_t w_i = bits.get_window((Windows - i - 1) * WindowBits);
 
             accum += AffinePoint::ct_select(m_table, w_i);
+
+            if(i == 0 || i == Windows / 2) {
+               accum.randomize_rep(rng);
+            }
          }
 
          return accum;
