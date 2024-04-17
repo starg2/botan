@@ -111,7 +111,7 @@ class P521Rep final {
          // s = hi + lo
          std::array<W, N> s = {};
          // Will never carry out
-         word carry = bigint_add3_nc(s.data(), lo.data(), N, hi.data(), N);
+         W carry = bigint_add3_nc(s.data(), lo.data(), N, hi.data(), N);
 
          // But might be greater than modulus:
          std::array<W, N> r = {};
@@ -899,7 +899,7 @@ struct IntParams {
 template <typename Params, template <typename FieldParams> typename FieldRep = MontgomeryRep>
 class EllipticCurve {
    public:
-      typedef word W;
+      typedef typename Params::W W;
 
       static const constexpr auto PW = Params::PW;
       static const constexpr auto NW = Params::NW;

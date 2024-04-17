@@ -18,4 +18,5 @@ xmd
 pcurves.h
 pcurves_impl.h
 pcurves_util.h
+pcurves_wrap.h
 </header:internal>

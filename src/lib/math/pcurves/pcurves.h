@@ -27,7 +27,7 @@ class OID;
 namespace Botan::PCurve {
 
 /// Identifier for a named prime order curve
-class PrimeOrderCurveId {
+class BOTAN_TEST_API PrimeOrderCurveId {
    public:
       enum class Id : uint8_t {
          /// secp256r1 aka P-256
@@ -51,7 +51,6 @@ class PrimeOrderCurveId {
       PrimeOrderCurveId(Id id) : m_id(id) {}
 
       /// Map a string to a curve identifier
-      BOTAN_TEST_API
       static std::optional<PrimeOrderCurveId> from_string(std::string_view name);
 
 #if defined(BOTAN_HAS_ASN1)
