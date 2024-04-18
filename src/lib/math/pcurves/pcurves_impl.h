@@ -19,6 +19,8 @@ namespace Botan {
 template <typename Params>
 class MontgomeryRep final {
    public:
+      typedef MontgomeryRep<Params> Self;
+
       static const constexpr auto P = Params::P;
       static const constexpr size_t N = Params::N;
       typedef typename Params::W W;
@@ -33,22 +35,32 @@ class MontgomeryRep final {
 
       constexpr static std::array<W, N> one() { return R1; }
 
-      constexpr static std::array<W, N> redc(const std::array<W, 2 * N>& z) { return bigint_monty_redc(z, P, P_dash); }
+      constexpr static std::array<W, N> redc(const std::array<W, 2 * N>& z) {
+         if constexpr(P_dash == 1) {
+            return monty_redc_pdash1(z, P);
+         } else {
+            return monty_redc(z, P, P_dash);
+         }
+      }
 
       constexpr static std::array<W, N> to_rep(const std::array<W, N>& x) {
          std::array<W, 2 * N> z;
          comba_mul<N>(z.data(), x.data(), R2.data());
-         return bigint_monty_redc(z, P, P_dash);
+         return Self::redc(z);
       }
 
       constexpr static std::array<W, N> wide_to_rep(const std::array<W, 2 * N>& x) {
-         auto redc_x = bigint_monty_redc(x, P, P_dash);
+         auto redc_x = Self::redc(x);
          std::array<W, 2 * N> z;
          comba_mul<N>(z.data(), redc_x.data(), R3.data());
-         return bigint_monty_redc(z, P, P_dash);
+         return Self::redc(z);
       }
 
-      constexpr static std::array<W, N> from_rep(const std::array<W, N>& z) { return bigint_monty_redc(z, P, P_dash); }
+      constexpr static std::array<W, N> from_rep(const std::array<W, N>& z) {
+         std::array<W, 2 * N> ze = {};
+         std::copy(z.begin(), z.end(), ze.begin());
+         return Self::redc(ze);
+      }
 };
 
 template <typename Params>

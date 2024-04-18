@@ -544,10 +544,17 @@ class word3 {
       }
 
       inline constexpr W monty_step(W p0, W p_dash) {
-         W w0 = static_cast<W>(m_w);
-         W r = w0 * p_dash;
+         const W w0 = static_cast<W>(m_w);
+         const W r = w0 * p_dash;
          mul(r, p0);
          m_w >>= WordInfo<W>::bits;
+         return r;
+      }
+
+      inline constexpr W monty_step_pdash1() {
+         const W r = static_cast<W>(m_w);
+         m_w >>= WordInfo<W>::bits;
+         m_w += static_cast<W3>(r);
          return r;
       }
 
@@ -582,6 +589,15 @@ class word3 {
          mul(r, p0);
          m_w0 = m_w1;
          m_w1 = m_w2;
+         m_w2 = 0;
+         return r;
+      }
+
+      inline constexpr W monty_step_pdash1() {
+         // If p_dash == 1 then p[0] = -1 and everything simplifies
+         const W r = m_w0;
+         m_w0 += m_w1;
+         m_w1 = m_w2 + (m_w0 < m_w1);
          m_w2 = 0;
          return r;
       }

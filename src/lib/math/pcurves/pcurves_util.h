@@ -12,6 +12,8 @@
 
 namespace Botan {
 
+namespace {
+
 template <WordType W, size_t N, size_t XN>
 inline consteval std::array<W, N> reduce_mod(const std::array<W, XN>& x, const std::array<W, N>& p) {
    std::array<W, N + 1> r = {0};
@@ -59,11 +61,57 @@ inline consteval std::array<W, N> mul_mod(const std::array<W, N>& x,
    return reduce_mod(z, p);
 }
 
-template <WordType W, size_t N, size_t ZL>
-inline constexpr auto bigint_monty_redc(const std::array<W, ZL>& z, const std::array<W, N>& p, W p_dash)
+template <WordType W, size_t N>
+inline constexpr auto monty_redc_pdash1(const std::array<W, 2 * N>& z, const std::array<W, N>& p) -> std::array<W, N> {
+   static_assert(N >= 1);
+
+   std::array<W, N> ws;
+
+   word3<word> accum;
+
+   accum.add(z[0]);
+
+   ws[0] = accum.monty_step_pdash1();
+
+   for(size_t i = 1; i != N; ++i) {
+      for(size_t j = 0; j < i; ++j) {
+         accum.mul(ws[j], p[i - j]);
+      }
+
+      accum.add(z[i]);
+
+      ws[i] = accum.monty_step_pdash1();
+   }
+
+   for(size_t i = 0; i != N - 1; ++i) {
+      for(size_t j = i + 1; j != N; ++j) {
+         accum.mul(ws[j], p[N + i - j]);
+      }
+
+      accum.add(z[N + i]);
+
+      ws[i] = accum.extract();
+   }
+
+   accum.add(z[2 * N - 1]);
+
+   ws[N - 1] = accum.extract();
+   // w1 is the final part, which is not stored in the workspace
+   const W w1 = accum.extract();
+
+   std::array<W, N> r = {0};
+   for(size_t i = 0; i != N; ++i) {
+      r[i] = z[i];
+   }
+   bigint_monty_maybe_sub<N>(r.data(), w1, ws.data(), p.data());
+
+   return r;
+}
+
+template <WordType W, size_t N>
+inline constexpr auto monty_redc(const std::array<W, 2 * N>& z, const std::array<W, N>& p, W p_dash)
    -> std::array<W, N> {
    static_assert(N >= 1);
-   static_assert(ZL <= 2 * N);
 
    std::array<W, N> ws;
 
@@ -78,9 +126,7 @@ inline constexpr auto bigint_monty_redc(const std::array<W, ZL>& z, const std::a
          accum.mul(ws[j], p[i - j]);
       }
 
-      if(i < ZL) {
-         accum.add(z[i]);
-      }
+      accum.add(z[i]);
 
       ws[i] = accum.monty_step(p[0], p_dash);
    }
@@ -90,23 +136,19 @@ inline constexpr auto bigint_monty_redc(const std::array<W, ZL>& z, const std::a
          accum.mul(ws[j], p[N + i - j]);
       }
 
-      if(N + i < ZL) {
-         accum.add(z[N + i]);
-      }
+      accum.add(z[N + i]);
 
       ws[i] = accum.extract();
    }
 
-   if constexpr(2 * N - 1 < ZL) {
-      accum.add(z[2 * N - 1]);
-   }
+   accum.add(z[2 * N - 1]);
 
    ws[N - 1] = accum.extract();
    // w1 is the final part, which is not stored in the workspace
    const W w1 = accum.extract();
 
    std::array<W, N> r = {0};
-   for(size_t i = 0; i != std::min(ZL, N); ++i) {
+   for(size_t i = 0; i != N; ++i) {
       r[i] = z[i];
    }
    bigint_monty_maybe_sub<N>(r.data(), w1, ws.data(), p.data());
@@ -174,6 +216,8 @@ inline constexpr auto bytes_to_words(const uint8_t bytes[L]) {
    }
    return r;
 }
+
+}  // namespace
 
 }  // namespace Botan
 
