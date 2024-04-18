@@ -40,6 +40,10 @@ class BOTAN_TEST_API PrimeOrderCurveId {
          secp256k1,
          /// brainpool256r1
          brainpool256r1,
+         brainpool384r1,
+         brainpool512r1,
+         frp256v1,
+         sm2p256v1,
       };
 
       using enum Id;

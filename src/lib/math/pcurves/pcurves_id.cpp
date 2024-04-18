@@ -19,6 +19,10 @@ std::vector<PrimeOrderCurveId> PrimeOrderCurveId::all() {
       PrimeOrderCurveId::secp521r1,
       PrimeOrderCurveId::secp256k1,
       PrimeOrderCurveId::brainpool256r1,
+      PrimeOrderCurveId::brainpool384r1,
+      PrimeOrderCurveId::brainpool512r1,
+      PrimeOrderCurveId::frp256v1,
+      PrimeOrderCurveId::sm2p256v1,
    };
 }
 
@@ -34,6 +38,14 @@ std::string PrimeOrderCurveId::to_string() const {
          return "secp256k1";
       case PrimeOrderCurveId::brainpool256r1:
          return "brainpool256r1";
+      case PrimeOrderCurveId::brainpool384r1:
+         return "brainpool384r1";
+      case PrimeOrderCurveId::brainpool512r1:
+         return "brainpool512r1";
+      case PrimeOrderCurveId::frp256v1:
+         return "frp256v1";
+      case PrimeOrderCurveId::sm2p256v1:
+         return "sm2p256v1";
    }
 
    return "unknown";
@@ -51,6 +63,14 @@ std::optional<PrimeOrderCurveId> PrimeOrderCurveId::from_string(std::string_view
       return PCurve::PrimeOrderCurveId::secp256k1;
    } else if(name == "brainpool256r1") {
       return PCurve::PrimeOrderCurveId::brainpool256r1;
+   } else if(name == "brainpool384r1") {
+      return PCurve::PrimeOrderCurveId::brainpool384r1;
+   } else if(name == "brainpool512r1") {
+      return PCurve::PrimeOrderCurveId::brainpool512r1;
+   } else if(name == "frp256v1") {
+      return PCurve::PrimeOrderCurveId::frp256v1;
+   } else if(name == "sm2p256v1") {
+      return PCurve::PrimeOrderCurveId::sm2p256v1;
    } else {
       return {};
    }
