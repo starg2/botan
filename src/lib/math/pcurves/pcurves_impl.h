@@ -111,7 +111,7 @@ class P521Rep final {
          // s = hi + lo
          std::array<W, N> s = {};
          // Will never carry out
-         W carry = bigint_add3_nc(s.data(), lo.data(), N, hi.data(), N);
+         W carry = bigint_add<W, N>(s, lo, hi);
 
          // But might be greater than modulus:
          std::array<W, N> r = {};
@@ -193,7 +193,7 @@ class IntMod final {
 
       friend constexpr Self operator+(const Self& a, const Self& b) {
          std::array<W, N> t;
-         W carry = bigint_add3_nc(t.data(), a.data(), N, b.data(), N);
+         W carry = bigint_add<W, N>(t, a.value(), b.value());
 
          std::array<W, N> r;
          bigint_monty_maybe_sub<N>(r.data(), carry, t.data(), P.data());
@@ -202,7 +202,7 @@ class IntMod final {
 
       constexpr Self& operator+=(const Self& other) {
          std::array<W, N> t;
-         W carry = bigint_add3_nc(t.data(), this->data(), N, other.data(), N);
+         W carry = bigint_add<W, N>(t, this->value(), other.value());
          bigint_monty_maybe_sub<N>(m_val.data(), carry, t.data(), P.data());
          return (*this);
       }
@@ -275,17 +275,43 @@ class IntMod final {
       }
 
       constexpr Self pow_vartime(const std::array<W, N>& exp) const {
-         auto x = (*this);
-         auto y = Self::one();
+         constexpr size_t WindowBits = 1;
+         constexpr size_t WindowElements = (1 << WindowBits) - 1;
 
-         for(size_t i = 0; i != Self::BITS; ++i) {
-            if(get_bit(i, exp)) {
-               y = y * x;
-            }
-            x = x.square();
+         constexpr size_t Windows = (Self::BITS + WindowBits - 1) / WindowBits;
+         constexpr size_t ExtraBits = Self::BITS % (Windows * WindowBits);
+         constexpr size_t FullWindows = (ExtraBits == 0) ? Windows : Windows - 1;
+
+         std::array<Self, WindowElements> tbl;
+
+         tbl[0] = (*this);
+
+         for(size_t i = 1; i != WindowElements; ++i) {
+            // TODO use square
+            tbl[i] = tbl[i - 1] * tbl[0];
          }
 
-         return y;
+         auto r = Self::one();
+
+         const size_t w0 = read_window_bits<WindowBits>(std::span{exp}, Self::BITS - 1);
+
+         if(w0 > 0) {
+            r = tbl[w0 - 1];
+         }
+
+         for(size_t i = 1; i != FullWindows; ++i) {
+            for(size_t j = 0; j != WindowBits; ++j) {
+               r = r.square();
+            }
+
+            const size_t w = read_window_bits<WindowBits>(std::span{exp}, Self::BITS - i - 1);
+
+            if(w > 0) {
+               r *= tbl[w - 1];
+            }
+         }
+
+         return r;
       }
 
       /**
@@ -968,9 +994,6 @@ class BlindedScalarBits final {
       static_assert(C::BlindingBits % WordInfo<W>::bits == 0);
       static_assert(C::BlindingBits < C::Scalar::BITS);
 
-      // A bitmask that has the lowest WindowBits bits set
-      static const constinit uint8_t WindowMask = static_cast<uint8_t>(1 << WindowBits) - 1;
-
    public:
       static constexpr size_t Bits = C::Scalar::BITS + C::BlindingBits;
 
@@ -999,23 +1022,7 @@ class BlindedScalarBits final {
       }
 
       // Extract a WindowBits sized window out of s, depending on offset.
-      size_t get_window(size_t offset) const {
-         const auto bit_shift = offset % 8;
-         const auto byte_offset = m_bytes.size() - 1 - (offset / 8);
-
-         const bool single_byte_window = bit_shift <= (8 - WindowBits) || byte_offset == 0;
-
-         const auto w0 = m_bytes[byte_offset];
-
-         if(single_byte_window) {
-            return (w0 >> bit_shift) & WindowMask;
-         } else {
-            // Otherwise we must join two bytes and extract the result
-            const auto w1 = m_bytes[byte_offset - 1];
-            const auto combined = ((w0 >> bit_shift) | (w1 << (8 - bit_shift)));
-            return combined & WindowMask;
-         }
-      }
+      size_t get_window(size_t offset) const { return read_window_bits<WindowBits>(std::span{m_bytes}, offset); }
 
    private:
       // secure_vector?

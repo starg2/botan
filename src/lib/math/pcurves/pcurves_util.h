@@ -163,6 +163,7 @@ inline consteval std::array<W, N> p_minus(const std::array<W, N>& p) {
    std::array<W, N> r;
    W x = X;
    bigint_sub3(r.data(), p.data(), N, &x, 1);
+   std::reverse(r.begin(), r.end());
    return r;
 }
 
@@ -172,6 +173,7 @@ inline consteval std::array<W, N> p_plus_1_over_4(const std::array<W, N>& p) {
    std::array<W, N> r;
    bigint_add3_nc(r.data(), p.data(), N, &one, 1);
    shift_right<2>(r);
+   std::reverse(r.begin(), r.end());
    return r;
 }
 
@@ -181,22 +183,21 @@ inline consteval std::array<W, N> p_minus_1_over_2(const std::array<W, N>& p) {
    std::array<W, N> r;
    bigint_sub3(r.data(), p.data(), N, &one, 1);
    shift_right<1>(r);
+   std::reverse(r.begin(), r.end());
    return r;
 }
 
 template <WordType W, size_t N>
-inline constexpr uint8_t get_bit(size_t i, const std::array<W, N>& p) {
-   const size_t w = i / WordInfo<W>::bits;
-   const size_t b = i % WordInfo<W>::bits;
-
-   return static_cast<uint8_t>((p[w] >> b) & 0x01);
-}
-
-template <WordType W, size_t N>
 inline consteval size_t count_bits(const std::array<W, N>& p) {
+   auto get_bit = [&](size_t i) {
+      const size_t w = i / WordInfo<W>::bits;
+      const size_t b = i % WordInfo<W>::bits;
+      return static_cast<uint8_t>((p[w] >> b) & 0x01);
+   };
+
    size_t b = WordInfo<W>::bits * N;
 
-   while(get_bit(b - 1, p) == 0) {
+   while(get_bit(b - 1) == 0) {
       b -= 1;
    }
 
@@ -215,6 +216,31 @@ inline constexpr auto bytes_to_words(const uint8_t bytes[L]) {
       r[0] += bytes[i];
    }
    return r;
+}
+
+// Extract a WindowBits sized window out of s, depending on offset.
+template <size_t WindowBits, typename W, size_t N>
+constexpr size_t read_window_bits(std::span<const W, N> words, size_t offset) {
+   static_assert(WindowBits >= 1 && WindowBits <= 7);
+
+   const uint8_t WindowMask = static_cast<uint8_t>(1 << WindowBits) - 1;
+
+   const size_t W_bits = sizeof(W) * 8;
+   const auto bit_shift = offset % W_bits;
+   const auto word_offset = words.size() - 1 - (offset / W_bits);
+
+   const bool single_byte_window = bit_shift <= (W_bits - WindowBits) || word_offset == 0;
+
+   const auto w0 = words[word_offset];
+
+   if(single_byte_window) {
+      return (w0 >> bit_shift) & WindowMask;
+   } else {
+      // Otherwise we must join two words and extract the result
+      const auto w1 = words[word_offset - 1];
+      const auto combined = ((w0 >> bit_shift) | (w1 << (8 - bit_shift)));
+      return combined & WindowMask;
+   }
 }
 
 }  // namespace

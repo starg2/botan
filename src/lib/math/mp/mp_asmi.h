@@ -117,6 +117,12 @@ inline constexpr auto word_madd3(W a, W b, W c, W* d) -> W {
 
    #define ASM(x) x "\n\t"
 
+   #define DO_4_TIMES(MACRO, ARG) \
+      MACRO(ARG, 0)               \
+      MACRO(ARG, 1)               \
+      MACRO(ARG, 2)               \
+      MACRO(ARG, 3)
+
    #define DO_8_TIMES(MACRO, ARG) \
       MACRO(ARG, 0)               \
       MACRO(ARG, 1)               \
@@ -236,6 +242,25 @@ inline constexpr auto word8_add3(W z[8], const W x[8], const W y[8], W carry) ->
    return carry;
 }
 
+template <WordType W>
+inline constexpr auto word4_add3(W z[4], const W x[4], const W y[4], W carry) -> W {
+#if defined(BOTAN_MP_USE_X86_64_ASM)
+   if(std::same_as<W, uint64_t> && !std::is_constant_evaluated()) {
+      asm volatile(ADD_OR_SUBTRACT(DO_4_TIMES(ADDSUB3_OP, "adcq"))
+                   : [carry] "=r"(carry)
+                   : [x] "r"(x), [y] "r"(y), [z] "r"(z), "0"(carry)
+                   : "cc", "memory");
+      return carry;
+   }
+#endif
+
+   z[0] = word_add(x[0], y[0], &carry);
+   z[1] = word_add(x[1], y[1], &carry);
+   z[2] = word_add(x[2], y[2], &carry);
+   z[3] = word_add(x[3], y[3], &carry);
+   return carry;
+}
+
 /*
 * Word Subtraction
 */
@@ -333,6 +358,25 @@ inline constexpr auto word8_sub3(W z[8], const W x[8], const W y[8], W carry) ->
    z[5] = word_sub(x[5], y[5], &carry);
    z[6] = word_sub(x[6], y[6], &carry);
    z[7] = word_sub(x[7], y[7], &carry);
+   return carry;
+}
+
+template <WordType W>
+inline constexpr auto word4_sub3(W z[4], const W x[4], const W y[4], W carry) -> W {
+#if defined(BOTAN_MP_USE_X86_64_ASM)
+   if(std::same_as<W, uint64_t> && !std::is_constant_evaluated()) {
+      asm volatile(ADD_OR_SUBTRACT(DO_4_TIMES(ADDSUB3_OP, "sbbq"))
+                   : [carry] "=r"(carry)
+                   : [x] "r"(x), [y] "r"(y), [z] "r"(z), "0"(carry)
+                   : "cc", "memory");
+      return carry;
+   }
+#endif
+
+   z[0] = word_sub(x[0], y[0], &carry);
+   z[1] = word_sub(x[1], y[1], &carry);
+   z[2] = word_sub(x[2], y[2], &carry);
+   z[3] = word_sub(x[3], y[3], &carry);
    return carry;
 }
 
@@ -609,6 +653,7 @@ class word3 {
 
 #if defined(ASM)
    #undef ASM
+   #undef DO_4_TIMES
    #undef DO_8_TIMES
    #undef ADD_OR_SUBTRACT
    #undef ADDSUB2_OP
