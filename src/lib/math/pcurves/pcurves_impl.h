@@ -275,36 +275,37 @@ class IntMod final {
       }
 
       constexpr Self pow_vartime(const std::array<W, N>& exp) const {
-         constexpr size_t WindowBits = 1;
+         constexpr size_t WindowBits = 4;
          constexpr size_t WindowElements = (1 << WindowBits) - 1;
 
          constexpr size_t Windows = (Self::BITS + WindowBits - 1) / WindowBits;
-         constexpr size_t ExtraBits = Self::BITS % (Windows * WindowBits);
-         constexpr size_t FullWindows = (ExtraBits == 0) ? Windows : Windows - 1;
 
          std::array<Self, WindowElements> tbl;
 
          tbl[0] = (*this);
 
          for(size_t i = 1; i != WindowElements; ++i) {
-            // TODO use square
-            tbl[i] = tbl[i - 1] * tbl[0];
+            if(i % 2 == 1) {
+               tbl[i] = tbl[i / 2].square();
+            } else {
+               tbl[i] = tbl[i - 1] * tbl[0];
+            }
          }
 
          auto r = Self::one();
 
-         const size_t w0 = read_window_bits<WindowBits>(std::span{exp}, Self::BITS - 1);
+         const size_t w0 = read_window_bits<WindowBits>(std::span{exp}, (Windows - 1) * WindowBits);
 
          if(w0 > 0) {
             r = tbl[w0 - 1];
          }
 
-         for(size_t i = 1; i != FullWindows; ++i) {
+         for(size_t i = 1; i != Windows; ++i) {
             for(size_t j = 0; j != WindowBits; ++j) {
                r = r.square();
             }
 
-            const size_t w = read_window_bits<WindowBits>(std::span{exp}, Self::BITS - i - 1);
+            const size_t w = read_window_bits<WindowBits>(std::span{exp}, (Windows - i - 1) * WindowBits);
 
             if(w > 0) {
                r *= tbl[w - 1];

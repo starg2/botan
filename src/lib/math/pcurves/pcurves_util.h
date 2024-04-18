@@ -238,7 +238,7 @@ constexpr size_t read_window_bits(std::span<const W, N> words, size_t offset) {
    } else {
       // Otherwise we must join two words and extract the result
       const auto w1 = words[word_offset - 1];
-      const auto combined = ((w0 >> bit_shift) | (w1 << (8 - bit_shift)));
+      const auto combined = ((w0 >> bit_shift) | (w1 << (W_bits - bit_shift)));
       return combined & WindowMask;
    }
 }
