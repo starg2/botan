@@ -397,10 +397,16 @@ class IntMod final {
       }
 
       static constexpr Self random(RandomNumberGenerator& rng) {
-         const size_t R_bytes = Self::BYTES + 16;
+         const size_t R_bytes = Self::BYTES + Self::BYTES / 2;
          std::array<uint8_t, R_bytes> buf;
-         rng.randomize(buf);
-         return Self::from_wide_bytes(std::span<const uint8_t, R_bytes>{buf});
+
+         for(;;) {
+            rng.randomize(buf);
+            auto s = Self::from_wide_bytes(std::span<const uint8_t, R_bytes>{buf});
+            if(!s.is_zero()) {
+               return s;
+            }
+         }
       }
 
       static consteval Self constant(int8_t x) {

@@ -14,50 +14,9 @@
    #include <botan/ec_group.h>
 #endif
 
-#if defined(BOTAN_HAS_PCURVES)
-   #include <botan/internal/pcurves.h>
-#endif
-
 namespace Botan_Tests {
 
 namespace {
-
-#if defined(BOTAN_HAS_PCURVES)
-
-class ECC_Basepoint_Pcurve_Mul_Tests final : public Text_Based_Test {
-   public:
-      ECC_Basepoint_Pcurve_Mul_Tests() : Text_Based_Test("pubkey/ecc_base_point_mul.vec", "k,P") {}
-
-      Test::Result run_one_test(const std::string& group_id, const VarMap& vars) override {
-         Test::Result result("ECC base point multiply with pcurve " + group_id);
-
-         const auto k_bytes = vars.get_req_bin("k");
-         const auto P_bytes = vars.get_req_bin("P");
-
-         auto& rng = Test::rng();
-
-         if(auto id = Botan::PCurve::PrimeOrderCurveId::from_string(group_id)) {
-            if(auto curve = Botan::PCurve::PrimeOrderCurve::from_id(id.value())) {
-               if(auto scalar = curve->deserialize_scalar(k_bytes)) {
-                  auto pt2 = curve->mul_by_g(scalar.value(), rng).to_affine().serialize();
-                  result.test_eq("mul_by_g correct", pt2, P_bytes);
-
-                  auto g = curve->generator();
-                  auto pt3 = curve->mul(g, scalar.value(), rng).to_affine().serialize();
-                  result.test_eq("mul correct", pt3, P_bytes);
-               } else {
-                  result.test_failure("Curve rejected scalar input");
-               }
-            }
-         }
-
-         return result;
-      }
-};
-
-BOTAN_REGISTER_TEST("pubkey", "ecc_basemul_pcurve", ECC_Basepoint_Pcurve_Mul_Tests);
-
-#endif
 
 #if defined(BOTAN_HAS_ECC_GROUP)
 

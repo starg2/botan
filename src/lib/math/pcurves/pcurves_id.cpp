@@ -12,6 +12,16 @@
 
 namespace Botan::PCurve {
 
+std::vector<PrimeOrderCurveId> PrimeOrderCurveId::all() {
+   return {
+      PrimeOrderCurveId::secp256r1,
+      PrimeOrderCurveId::secp384r1,
+      PrimeOrderCurveId::secp521r1,
+      PrimeOrderCurveId::secp256k1,
+      PrimeOrderCurveId::brainpool256r1,
+   };
+}
+
 std::string PrimeOrderCurveId::to_string() const {
    switch(this->code()) {
       case PrimeOrderCurveId::secp256r1:

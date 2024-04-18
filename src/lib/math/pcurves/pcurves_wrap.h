@@ -37,7 +37,27 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
 
       AffinePoint generator() const override { return stash(C::G); }
 
-      AffinePoint to_affine(const ProjectivePoint& pt) const override { return stash(from_stash(pt).to_affine()); }
+      AffinePoint point_to_affine(const ProjectivePoint& pt) const override {
+         return stash(from_stash(pt).to_affine());
+      }
+
+      ProjectivePoint point_to_projective(const AffinePoint& pt) const override {
+         return stash(C::ProjectivePoint::from_affine(from_stash(pt)));
+      }
+
+      ProjectivePoint point_double(const ProjectivePoint& pt) const override { return stash(from_stash(pt).dbl()); }
+
+      ProjectivePoint point_add(const ProjectivePoint& a, const ProjectivePoint& b) const override {
+         return stash(from_stash(a) + from_stash(b));
+      }
+
+      ProjectivePoint point_add_mixed(const ProjectivePoint& a, const AffinePoint& b) const override {
+         return stash(from_stash(a) + from_stash(b));
+      }
+
+      bool affine_point_is_identity(const AffinePoint& pt) const override { return from_stash(pt).is_identity(); }
+
+      bool proj_point_is_identity(const ProjectivePoint& pt) const override { return from_stash(pt).is_identity(); }
 
       std::vector<uint8_t> serialize_point(const AffinePoint& pt, bool compress) const override {
          return from_stash(pt).serialize_to_vec(compress);
@@ -93,6 +113,14 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
       Scalar scalar_negate(const Scalar& s) const override { return stash(from_stash(s).negate()); }
 
       bool scalar_is_zero(const Scalar& s) const override { return from_stash(s).is_zero(); }
+
+      bool scalar_equal(const Scalar& a, const Scalar& b) const override { return from_stash(a) == from_stash(b); }
+
+      Scalar scalar_zero() const override { return stash(C::Scalar::zero()); }
+
+      Scalar scalar_one() const override { return stash(C::Scalar::one()); }
+
+      Scalar random_scalar(RandomNumberGenerator& rng) const override { return stash(C::Scalar::random(rng)); }
 
       PrimeOrderCurveImpl() : m_mul_by_g(C::G) {}
 
