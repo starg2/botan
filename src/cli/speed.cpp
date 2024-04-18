@@ -1140,11 +1140,17 @@ class Speed final : public Command {
 
                const Botan::EC_Point r1 = mult_timer->run([&]() { return base_point * scalar; });
 
-               const Botan::EC_Point r2 =
-                  blinded_mult_timer->run([&]() { return ec_group.blinded_base_point_multiply(scalar, rng(), ws); });
+               const Botan::EC_Point r2 = blinded_mult_timer->run([&]() {
+                  auto pt = ec_group.blinded_base_point_multiply(scalar, rng(), ws);
+                  pt.force_affine();
+                  return pt;
+               });
 
-               const Botan::EC_Point r3 = blinded_var_mult_timer->run(
-                  [&]() { return ec_group.blinded_var_point_multiply(base_point, scalar, rng(), ws); });
+               const Botan::EC_Point r3 = blinded_var_mult_timer->run([&]() {
+                  auto pt = ec_group.blinded_var_point_multiply(base_point, scalar, rng(), ws);
+                  pt.force_affine();
+                  return pt;
+               });
 
                BOTAN_ASSERT_EQUAL(r1, r2, "Same point computed by Montgomery and comb");
                BOTAN_ASSERT_EQUAL(r1, r3, "Same point computed by Montgomery and window");
@@ -1155,10 +1161,10 @@ class Speed final : public Command {
                      const auto scalar_bytes = Botan::BigInt::encode_1363(scalar, ec_group.get_order_bytes());
 
                      if(auto s = curve->deserialize_scalar(scalar_bytes)) {
-                        pcurves_base_timer->run([&]() { return curve->mul_by_g(s.value(), rng()); });
+                        pcurves_base_timer->run([&]() { return curve->mul_by_g(s.value(), rng()).to_affine(); });
 
                         auto g = curve->generator();
-                        pcurves_var_timer->run([&]() { return curve->mul(g, s.value(), rng()); });
+                        pcurves_var_timer->run([&]() { return curve->mul(g, s.value(), rng()).to_affine(); });
                      }
                   }
                }
