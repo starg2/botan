@@ -88,6 +88,18 @@ class Pcurve_Point_Tests final : public Test {
             const auto g_one = curve->mul_by_g(one, rng);
             result.test_eq("g*one == generator", g_one.to_affine().serialize(), g_bytes);
 
+            const auto g_plus_inf = g_one + inf;
+            result.test_eq("g + inf == g", g_plus_inf.to_affine().serialize(), g_bytes);
+
+            const auto g_plus_infa = g_one + inf.to_affine();
+            result.test_eq("g + inf (affine) == g", g_plus_infa.to_affine().serialize(), g_bytes);
+
+            const auto inf_plus_g = inf + g_one;
+            result.test_eq("inf + g == g", inf_plus_g.to_affine().serialize(), g_bytes);
+
+            const auto inf_plus_ga = inf + g_one.to_affine();
+            result.test_eq("inf + g (affine) == g", inf_plus_ga.to_affine().serialize(), g_bytes);
+
             const auto g_neg_one = curve->mul_by_g(one.negate(), rng);
 
             const auto inf_from_g = g_one + g_neg_one;

@@ -655,25 +655,16 @@ class ProjectiveCurvePoint {
       }
 
       constexpr static Self add_mixed(const Self& a, const AffinePoint& b) {
-         // TODO avoid these early returns by masking instead
-         if(a.is_identity()) {
-            return Self::from_affine(b);
-         }
-
-         if(b.is_identity()) {
-            return a;
+         const auto a_is_identity = a.is_identity();
+         const auto b_is_identity = b.is_identity();
+         if(a_is_identity && b_is_identity) {
+            return Self::identity();
          }
 
          /*
          https://hyperelliptic.org/EFD/g1p/auto-shortw-jacobian-3.html#addition-add-1998-cmo-2
 
-         // 12M + 4S + 6add + 1*2
-         TODO rename these vars
-
-         TODO reduce vars
-
-         TODO use a complete addition formula??? (YES)
-         https://eprint.iacr.org/2015/1060.pdf
+         12M + 4S + 6add + 1*2
          */
 
          const auto Z1Z1 = a.z().square();
@@ -682,12 +673,9 @@ class ProjectiveCurvePoint {
          const auto H = U2 - a.x();
          const auto r = S2 - a.y();
 
-         if(H.is_zero()) {
-            if(r.is_zero()) {
-               return a.dbl();
-            } else {
-               return Self::identity();
-            }
+         // If r is zero then we are in the doubling case
+         if(r.is_zero()) {
+            return a.dbl();
          }
 
          const auto HH = H.square();
@@ -696,35 +684,36 @@ class ProjectiveCurvePoint {
          const auto t2 = r.square();
          const auto t3 = V + V;
          const auto t4 = t2 - HHH;
-         const auto X3 = t4 - t3;
+         auto X3 = t4 - t3;
          const auto t5 = V - X3;
          const auto t6 = a.y() * HHH;
          const auto t7 = r * t5;
-         const auto Y3 = t7 - t6;
-         const auto Z3 = a.z() * H;
+         auto Y3 = t7 - t6;
+         auto Z3 = a.z() * H;
+
+         // TODO these could be combined
+         // if a is identity then return b
+         X3.conditional_assign(a_is_identity, b.x());
+         Y3.conditional_assign(a_is_identity, b.y());
+         Z3.conditional_assign(a_is_identity, FieldElement::one());
+
+         // if b is identity then return a
+         X3.conditional_assign(b_is_identity, a.x());
+         Y3.conditional_assign(b_is_identity, a.y());
+         Z3.conditional_assign(b_is_identity, a.z());
 
          return Self(X3, Y3, Z3);
       }
 
       constexpr static Self add(const Self& a, const Self& b) {
-         // TODO avoid these early returns by masking instead
-         if(a.is_identity()) {
-            return b;
-         }
-
-         if(b.is_identity()) {
-            return a;
+         const auto a_is_identity = a.is_identity();
+         const auto b_is_identity = b.is_identity();
+         if(a_is_identity && b_is_identity) {
+            return Self::identity();
          }
 
          /*
          https://hyperelliptic.org/EFD/g1p/auto-shortw-jacobian-3.html#addition-add-1998-cmo-2
-
-         TODO rename these vars
-
-         TODO reduce vars
-
-         TODO use a complete addition formula??? (YES)
-         https://eprint.iacr.org/2015/1060.pdf
          */
 
          const auto Z1Z1 = a.z().square();
@@ -736,12 +725,8 @@ class ProjectiveCurvePoint {
          const auto H = U2 - U1;
          const auto r = S2 - S1;
 
-         if(H.is_zero()) {
-            if(r.is_zero()) {
-               return a.dbl();
-            } else {
-               return Self::identity();
-            }
+         if(r.is_zero()) {
+            return a.dbl();
          }
 
          const auto HH = H.square();
@@ -750,13 +735,24 @@ class ProjectiveCurvePoint {
          const auto t2 = r.square();
          const auto t3 = V + V;
          const auto t4 = t2 - HHH;
-         const auto X3 = t4 - t3;
+         auto X3 = t4 - t3;
          const auto t5 = V - X3;
          const auto t6 = S1 * HHH;
          const auto t7 = r * t5;
-         const auto Y3 = t7 - t6;
+         auto Y3 = t7 - t6;
          const auto t8 = b.z() * H;
-         const auto Z3 = a.z() * t8;
+         auto Z3 = a.z() * t8;
+
+         // TODO these could be combined
+         // if a is identity then return b
+         X3.conditional_assign(a_is_identity, b.x());
+         Y3.conditional_assign(a_is_identity, b.y());
+         Z3.conditional_assign(a_is_identity, b.z());
+
+         // if b is identity then return a
+         X3.conditional_assign(b_is_identity, a.x());
+         Y3.conditional_assign(b_is_identity, a.y());
+         Z3.conditional_assign(b_is_identity, a.z());
 
          return Self(X3, Y3, Z3);
       }
@@ -1080,9 +1076,14 @@ class PrecomputedMulTable final {
 
          for(size_t i = 0; i != Windows; ++i) {
             const size_t w_i = bits.get_window(WindowBits * i);
+            const auto tbl_i = std::span{m_table.begin() + WindowElements * i, WindowElements};
+            const auto pt_i = AffinePoint::ct_select(tbl_i, w_i);
 
-            auto tbl_i = std::span{m_table.begin() + WindowElements * i, WindowElements};
-            accum += AffinePoint::ct_select(tbl_i, w_i);
+            if(i == 0) {
+               accum = ProjectivePoint::from_affine(pt_i);
+            } else {
+               accum += pt_i;
+            }
 
             if(i == 0 || i == Windows / 2) {
                accum.randomize_rep(rng);
@@ -1139,8 +1140,13 @@ class WindowedMulTable final {
                accum = accum.dbl_n(WindowBits);
             }
             const size_t w_i = bits.get_window((Windows - i - 1) * WindowBits);
+            const auto pt_i = AffinePoint::ct_select(m_table, w_i);
 
-            accum += AffinePoint::ct_select(m_table, w_i);
+            if(i == 0) {
+               accum = ProjectivePoint::from_affine(pt_i);
+            } else {
+               accum += pt_i;
+            }
 
             if(i == 0 || i == Windows / 2) {
                accum.randomize_rep(rng);
@@ -1195,14 +1201,17 @@ inline auto hash_to_curve_sswu(std::string_view hash,
    std::vector<uint8_t> xmd(L * Cnt);
    expand_message_xmd(hash, xmd, pw, dst);
 
-   auto pt = C::ProjectivePoint::identity();
+   if(Cnt == 1) {
+      const auto u = C::FieldElement::from_wide_bytes(std::span<const uint8_t, L>(xmd));
+      return C::ProjectivePoint::from_affine(map_to_curve_sswu<C>(u));
+   } else {
+      const auto u0 = C::FieldElement::from_wide_bytes(std::span<const uint8_t, L>(xmd.data(), L));
+      const auto u1 = C::FieldElement::from_wide_bytes(std::span<const uint8_t, L>(xmd.data() + L, L));
 
-   for(size_t i = 0; i != Cnt; ++i) {
-      const auto u = C::FieldElement::from_wide_bytes(std::span<const uint8_t, L>(xmd.data() + i * L, L));
-      pt += map_to_curve_sswu<C>(u);
+      auto accum = C::ProjectivePoint::from_affine(map_to_curve_sswu<C>(u0));
+      accum += map_to_curve_sswu<C>(u1);
+      return accum;
    }
-
-   return pt;
 }
 
 }  // namespace Botan
