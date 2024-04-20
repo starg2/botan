@@ -26,18 +26,16 @@ class Pcurve_Basemul_Tests final : public Text_Based_Test {
 
          auto& rng = Test::rng();
 
-         if(auto id = Botan::PCurve::PrimeOrderCurveId::from_string(group_id)) {
-            if(auto curve = Botan::PCurve::PrimeOrderCurve::from_id(id.value())) {
-               if(auto scalar = curve->deserialize_scalar(k_bytes)) {
-                  auto pt2 = curve->mul_by_g(scalar.value(), rng).to_affine().serialize();
-                  result.test_eq("mul_by_g correct", pt2, P_bytes);
+         if(auto curve = Botan::PCurve::PrimeOrderCurve::from_name(group_id)) {
+            if(auto scalar = curve->deserialize_scalar(k_bytes)) {
+               auto pt2 = curve->mul_by_g(scalar.value(), rng).to_affine().serialize();
+               result.test_eq("mul_by_g correct", pt2, P_bytes);
 
-                  auto g = curve->generator();
-                  auto pt3 = curve->mul(g, scalar.value(), rng).to_affine().serialize();
-                  result.test_eq("mul correct", pt3, P_bytes);
-               } else {
-                  result.test_failure("Curve rejected scalar input");
-               }
+               auto g = curve->generator();
+               auto pt3 = curve->mul(g, scalar.value(), rng).to_affine().serialize();
+               result.test_eq("mul correct", pt3, P_bytes);
+            } else {
+               result.test_failure("Curve rejected scalar input");
             }
          }
 

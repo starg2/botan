@@ -82,6 +82,14 @@ class BOTAN_TEST_API PrimeOrderCurve {
       /// Number of words used to store MaximumByteLength
       static const size_t StorageWords = (MaximumByteLength + sizeof(word) - 1) / sizeof(word);
 
+      static std::shared_ptr<const PrimeOrderCurve> from_name(std::string_view name) {
+         if(auto id = PrimeOrderCurveId::from_string(name)) {
+            return PrimeOrderCurve::from_id(id.value());
+         } else {
+            return {};
+         }
+      }
+
       static std::shared_ptr<const PrimeOrderCurve> from_id(PrimeOrderCurveId id);
 
       /// Creates a generic non-optimized version
