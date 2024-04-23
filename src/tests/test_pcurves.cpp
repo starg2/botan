@@ -7,6 +7,8 @@
 #include "tests.h"
 
 #if defined(BOTAN_HAS_PCURVES)
+   #include "test_rng.h"
+   #include <botan/mem_ops.h>
    #include <botan/internal/pcurves.h>
 #endif
 
@@ -44,6 +46,84 @@ class Pcurve_Basemul_Tests final : public Text_Based_Test {
 };
 
 BOTAN_REGISTER_TEST("pcurves", "pcurves_basemul", Pcurve_Basemul_Tests);
+
+class Pcurve_Ecdsa_Sign_Tests final : public Text_Based_Test {
+   public:
+      Pcurve_Ecdsa_Sign_Tests() : Text_Based_Test("pubkey/ecdsa_pcurves.vec", "X,E,K,Sig") {}
+
+      bool clear_between_callbacks() const override { return false; }
+
+      static std::vector<uint8_t> ecdsa_sign(const Botan::PCurve::PrimeOrderCurve& curve,
+                                             const Botan::PCurve::PrimeOrderCurve::Scalar& x,
+                                             std::span<const uint8_t> msg,
+                                             Botan::RandomNumberGenerator& nonce_rng,
+                                             Botan::RandomNumberGenerator& rng) {
+         const auto e = curve.scalar_from_bits_with_trunc(msg);
+         const auto k = curve.random_scalar(nonce_rng);
+         const auto r = curve.base_point_mul_x_mod_order(k, rng);
+         const auto k_inv = k.invert();
+
+         /*
+         * Blind the input message and compute x*r+e as (b*x*r + b*e)/b
+         */
+         auto b = curve.random_scalar(rng);
+         auto b_inv = b.invert();
+
+         b = b.square();
+         b_inv = b_inv.square();
+
+         const auto be = b * e;
+         const auto bx = b * x;
+
+         const auto bxr_e = (bx * r) + be;
+
+         const auto s = (k_inv * bxr_e) * b_inv;
+
+         // With overwhelming probability, a bug rather than actual zero r/s
+         if(r.is_zero() || s.is_zero()) {
+            throw Botan::Internal_Error("During ECDSA signature generated zero r/s");
+         }
+
+         const auto r_bytes = r.serialize();
+         const auto s_bytes = s.serialize();
+
+         const size_t sig_len = s_bytes.size() + r_bytes.size();
+
+         std::vector<uint8_t> sig(sig_len);
+         Botan::copy_mem(&sig[0], r_bytes.data(), r_bytes.size());
+         Botan::copy_mem(&sig[r_bytes.size()], s_bytes.data(), s_bytes.size());
+         return sig;
+      }
+
+      Test::Result run_one_test(const std::string& group_id, const VarMap& vars) override {
+         Test::Result result("Pcurves ECDSA sign " + group_id);
+
+         const auto sk = vars.get_req_bin("X");
+         const auto msg = vars.get_req_bin("E");
+         const auto nonce = vars.get_req_bin("K");
+         const auto expected_sig = vars.get_req_bin("Sig");
+
+         Fixed_Output_RNG nonce_rng(nonce);
+
+         auto curve = Botan::PCurve::PrimeOrderCurve::from_name(group_id);
+
+         if(!curve) {
+            result.test_note("Skipping test due to missing pcurve " + group_id);
+            return result;
+         }
+
+         if(auto x = curve->deserialize_scalar(sk)) {
+            auto sig = ecdsa_sign(*curve, x.value(), msg, nonce_rng, rng());
+            result.test_eq("correct signature generated", sig, expected_sig);
+         } else {
+            result.test_failure("Curve rejected scalar input");
+         }
+
+         return result;
+      }
+};
+
+BOTAN_REGISTER_TEST("pcurves", "pcurves_ecdsa_sign", Pcurve_Ecdsa_Sign_Tests);
 
 class Pcurve_Point_Tests final : public Test {
    public:

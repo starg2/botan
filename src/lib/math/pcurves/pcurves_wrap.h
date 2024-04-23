@@ -75,6 +75,10 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
          }
       }
 
+      Scalar scalar_from_bits_with_trunc(std::span<const uint8_t> bytes) const override {
+         return stash(C::Scalar::from_bits_with_trunc(bytes));
+      }
+
       std::optional<AffinePoint> deserialize_point(std::span<const uint8_t> bytes) const override {
          if(auto pt = C::AffinePoint::deserialize(bytes)) {
             return stash(*pt);

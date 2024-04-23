@@ -105,6 +105,8 @@ class BOTAN_TEST_API PrimeOrderCurve {
             Scalar& operator=(const Scalar& other) = default;
             Scalar& operator=(Scalar&& other) = default;
 
+            std::vector<uint8_t> serialize() const { return m_curve->serialize_scalar(*this); }
+
             friend Scalar operator*(const Scalar& a, const Scalar& b) { return a.m_curve->scalar_mul(a, b); }
 
             friend Scalar operator+(const Scalar& a, const Scalar& b) { return a.m_curve->scalar_add(a, b); }
@@ -243,6 +245,9 @@ class BOTAN_TEST_API PrimeOrderCurve {
 
       virtual std::optional<Scalar> deserialize_scalar(std::span<const uint8_t> bytes) const = 0;
 
+      // ECDSA style byte trunctation
+      virtual Scalar scalar_from_bits_with_trunc(std::span<const uint8_t> bytes) const = 0;
+
       virtual Scalar scalar_zero() const = 0;
       virtual Scalar scalar_one() const = 0;
       virtual Scalar scalar_add(const Scalar& a, const Scalar& b) const = 0;
@@ -255,6 +260,8 @@ class BOTAN_TEST_API PrimeOrderCurve {
       virtual bool scalar_equal(const Scalar& a, const Scalar& b) const = 0;
 
       virtual Scalar random_scalar(RandomNumberGenerator& rng) const = 0;
+
+      //virtual Scalar rfc6979_scalar(std::string_view hash_fn, const Scalar& sk, const Scalar& m) = 0;
 
       virtual ProjectivePoint hash_to_curve(std::string_view hash,
                                             std::span<const uint8_t> input,
