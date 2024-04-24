@@ -543,6 +543,13 @@ class Speed final : public Command {
                bench_rsa_keygen(provider, msec);
             }
 #endif
+
+#if defined(BOTAN_HAS_PCURVES)
+            else if(algo == "ECDSA-pcurves") {
+               bench_pcurve_ecdsa(ecc_groups, msec);
+            }
+#endif
+
 #if defined(BOTAN_HAS_ECDSA)
             else if(algo == "ECDSA") {
                bench_ecdsa(ecc_groups, provider, msec);
@@ -1156,16 +1163,14 @@ class Speed final : public Command {
                BOTAN_ASSERT_EQUAL(r1, r3, "Same point computed by Montgomery and window");
 
    #if defined(BOTAN_HAS_PCURVES)
-               if(auto id = Botan::PCurve::PrimeOrderCurveId::from_string(group_name)) {
-                  if(auto curve = Botan::PCurve::PrimeOrderCurve::from_id(id.value())) {
-                     const auto scalar_bytes = Botan::BigInt::encode_1363(scalar, ec_group.get_order_bytes());
+               if(auto curve = Botan::PCurve::PrimeOrderCurve::from_name(group_name)) {
+                  const auto scalar_bytes = Botan::BigInt::encode_1363(scalar, ec_group.get_order_bytes());
 
-                     if(auto s = curve->deserialize_scalar(scalar_bytes)) {
-                        pcurves_base_timer->run([&]() { return curve->mul_by_g(s.value(), rng()).to_affine(); });
+                  if(auto s = curve->deserialize_scalar(scalar_bytes)) {
+                     pcurves_base_timer->run([&]() { return curve->mul_by_g(s.value(), rng()).to_affine(); });
 
-                        auto g = curve->generator();
-                        pcurves_var_timer->run([&]() { return curve->mul(g, s.value(), rng()).to_affine(); });
-                     }
+                     auto g = curve->generator();
+                     pcurves_var_timer->run([&]() { return curve->mul(g, s.value(), rng()).to_affine(); });
                   }
                }
    #endif
@@ -1233,6 +1238,46 @@ class Speed final : public Command {
             record_result(h2c_nu_timer);
          }
       }
+#endif
+
+#if defined(BOTAN_HAS_PCURVES)
+
+      void bench_pcurve_ecdsa(const std::vector<std::string>& groups, const std::chrono::milliseconds runtime) {
+         for(const auto& group_name : groups) {
+            auto curve = Botan::PCurve::PrimeOrderCurve::from_name(group_name);
+            if(!curve) {
+               continue;
+            }
+
+            // Setup (not timed)
+            const auto x = curve->random_scalar(rng());
+            const auto e = curve->random_scalar(rng());
+
+            auto b = curve->random_scalar(rng());
+            auto b_inv = b.invert();
+
+            auto sign_timer = make_timer("ECDSA sign pcurves " + group_name);
+
+            while(sign_timer->under(runtime)) {
+               sign_timer->start();
+               const auto k = curve->random_scalar(rng());
+               const auto r = curve->base_point_mul_x_mod_order(k, rng());
+               const auto k_inv = k.invert();
+               b = b.square();
+               b_inv = b_inv.square();
+               const auto be = b * e;
+               const auto bx = b * x;
+               const auto bxr_e = (bx * r) + be;
+               const auto s = (k_inv * bxr_e) * b_inv;
+               const auto r_bytes = r.serialize();
+               const auto s_bytes = s.serialize();
+               sign_timer->stop();
+            }
+
+            record_result(sign_timer);
+         }
+      }
+
 #endif
 
 #if defined(BOTAN_HAS_FPE_FE1)
