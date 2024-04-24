@@ -215,6 +215,9 @@ class IntMod final {
          // We assume b is a small constant and allow variable time
          // computation
 
+         // In practice this function is called for 2, 3, 4, or 8
+         // It might be worth special casing these.
+
          Self z = Self::zero();
          Self x = a;
 
