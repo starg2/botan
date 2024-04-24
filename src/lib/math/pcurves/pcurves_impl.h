@@ -453,6 +453,14 @@ class IntMod final {
 
          for(;;) {
             rng.randomize(buf);
+
+            // Zero off high bits that if set would certainly cause us
+            // to be out of range
+            if constexpr(Self::BITS % 8 != 0) {
+               constexpr uint8_t mask = 0xFF >> (8 - (Self::BITS % 8));
+               buf[0] &= mask;
+            }
+
             if(auto s = Self::deserialize(buf)) {
                if(!s.value().is_zero()) {
                   return s.value();
