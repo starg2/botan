@@ -332,7 +332,7 @@ class IntMod final {
       constexpr Self sqrt() const {
          static_assert(Self::P_MOD_4 == 3);
          auto z = pow_vartime(Self::P_PLUS_1_OVER_4);
-         const bool correct = (z * z) == *this;
+         const bool correct = (z.square() == *this);
          z.conditional_assign(!correct, Self::zero());
          return z;
       }
