@@ -181,6 +181,8 @@ class BOTAN_TEST_API PrimeOrderCurve {
 
             ProjectivePoint dbl() const { return m_curve->point_double(*this); }
 
+            ProjectivePoint negate() const { return m_curve->point_negate(*this); }
+
             friend ProjectivePoint operator+(const ProjectivePoint& x, const ProjectivePoint& y) {
                return x.m_curve->point_add(x, y);
             }
@@ -221,6 +223,11 @@ class BOTAN_TEST_API PrimeOrderCurve {
 
       virtual ProjectivePoint mul(const AffinePoint& pt, const Scalar& scalar, RandomNumberGenerator& rng) const = 0;
 
+      virtual ProjectivePoint mul2_vartime(const AffinePoint& pt1,
+                                           const Scalar& s1,
+                                           const AffinePoint& pt2,
+                                           const Scalar& s2) const = 0;
+
       virtual AffinePoint generator() const = 0;
 
       virtual AffinePoint point_to_affine(const ProjectivePoint& pt) const = 0;
@@ -232,6 +239,8 @@ class BOTAN_TEST_API PrimeOrderCurve {
       virtual bool proj_point_is_identity(const ProjectivePoint& pt) const = 0;
 
       virtual ProjectivePoint point_double(const ProjectivePoint& pt) const = 0;
+
+      virtual ProjectivePoint point_negate(const ProjectivePoint& pt) const = 0;
 
       virtual ProjectivePoint point_add(const ProjectivePoint& a, const ProjectivePoint& b) const = 0;
 
@@ -250,6 +259,7 @@ class BOTAN_TEST_API PrimeOrderCurve {
 
       virtual Scalar scalar_zero() const = 0;
       virtual Scalar scalar_one() const = 0;
+      virtual Scalar scalar_from_u32(uint32_t x) const = 0;
       virtual Scalar scalar_add(const Scalar& a, const Scalar& b) const = 0;
       virtual Scalar scalar_sub(const Scalar& a, const Scalar& b) const = 0;
       virtual Scalar scalar_mul(const Scalar& a, const Scalar& b) const = 0;

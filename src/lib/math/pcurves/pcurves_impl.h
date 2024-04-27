@@ -1062,6 +1062,20 @@ class BlindedScalarBits final {
       std::vector<uint8_t> m_bytes;
 };
 
+template <typename C, size_t WindowBits>
+class UnblindedScalarBits final {
+   public:
+      static constexpr size_t Bits = C::Scalar::BITS;
+
+      UnblindedScalarBits(const typename C::Scalar& scalar) { m_bytes = scalar.serialize_to_vec(); }
+
+      // Extract a WindowBits sized window out of s, depending on offset.
+      size_t get_window(size_t offset) const { return read_window_bits<WindowBits>(std::span{m_bytes}, offset); }
+
+   private:
+      std::vector<uint8_t> m_bytes;
+};
+
 template <typename C>
 class PrecomputedMulTable final {
    public:
@@ -1186,6 +1200,76 @@ class WindowedMulTable final {
 
             if(i == 0 || i == Windows / 2) {
                accum.randomize_rep(rng);
+            }
+         }
+
+         return accum;
+      }
+
+   private:
+      std::vector<AffinePoint> m_table;
+};
+
+template <typename C, size_t W = 1>
+class WindowedMul2Table final {
+   public:
+      static_assert(W >= 1 && W < 4);
+
+      typedef typename C::Scalar Scalar;
+      typedef typename C::AffinePoint AffinePoint;
+      typedef typename C::ProjectivePoint ProjectivePoint;
+
+      static const constinit size_t WindowBits = W;
+
+      static const constinit size_t Windows = (Scalar::BITS + WindowBits - 1) / WindowBits;
+
+      // 2^(2*W) elements, less the identity element
+      static const constinit size_t WindowSize = (1 << WindowBits);
+      static const constinit size_t TableSize = (1 << (2 * WindowBits));
+
+      WindowedMul2Table(const AffinePoint& x, const AffinePoint& y) {
+         std::vector<ProjectivePoint> table;
+         table.reserve(TableSize);
+
+         // todo don't include identity in the table
+         table.push_back(ProjectivePoint::identity());
+
+         for(size_t i = 1; i != TableSize; ++i) {
+            const size_t x_i = i % WindowSize;
+            const size_t y_i = (i >> WindowBits) % WindowSize;
+
+            if(x_i % 2 == 0 && y_i % 2 == 0) {
+               table.push_back(table[i / 2].dbl());
+            } else if(x_i > 0 && y_i > 0) {
+               table.push_back(table[x_i] + table[y_i << WindowBits]);
+            } else if(x_i > 0 && y_i == 0) {
+               table.push_back(table[x_i - 1] + x);
+            } else if(x_i == 0 && y_i > 0) {
+               table.push_back(table[(y_i - 1) << WindowBits] + y);
+            }
+         }
+
+         m_table = ProjectivePoint::to_affine_batch(table);
+      }
+
+      ProjectivePoint mul2_vartime(const Scalar& s1, const Scalar& s2) const {
+         const UnblindedScalarBits<C, W> bits1(s1);
+         const UnblindedScalarBits<C, W> bits2(s2);
+
+         auto accum = ProjectivePoint::identity();
+
+         for(size_t i = 0; i != Windows; ++i) {
+            if(i > 0) {
+               accum = accum.dbl_n(WindowBits);
+            }
+
+            const size_t w_1 = bits1.get_window((Windows - i - 1) * WindowBits);
+            const size_t w_2 = bits2.get_window((Windows - i - 1) * WindowBits);
+
+            const size_t window = w_1 + (w_2 << WindowBits);
+
+            if(window > 0) {
+               accum += m_table[window];
             }
          }
 

@@ -1136,6 +1136,7 @@ class Speed final : public Command {
             auto blinded_var_mult_timer = make_timer(group_name + " blinded window");
             auto pcurves_base_timer = make_timer(group_name + " pcurve base");
             auto pcurves_var_timer = make_timer(group_name + " pcurve var");
+            auto pcurves_mul2_timer = make_timer(group_name + " pcurve mul2");
 
             const Botan::EC_Point& base_point = ec_group.get_base_point();
 
@@ -1171,6 +1172,10 @@ class Speed final : public Command {
 
                      auto g = curve->generator();
                      pcurves_var_timer->run([&]() { return curve->mul(g, s.value(), rng()).to_affine(); });
+
+                     auto h = curve->mul(g, s.value(), rng()).to_affine();
+                     pcurves_mul2_timer->run(
+                        [&]() { return curve->mul2_vartime(g, s.value(), h, s.value()).to_affine(); });
                   }
                }
    #endif
@@ -1182,6 +1187,7 @@ class Speed final : public Command {
             if(pcurves_base_timer->events() > 0) {
                record_result(pcurves_base_timer);
                record_result(pcurves_var_timer);
+               record_result(pcurves_mul2_timer);
             }
          }
       }

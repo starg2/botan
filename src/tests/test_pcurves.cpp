@@ -214,6 +214,41 @@ class Pcurve_Point_Tests final : public Test {
                result.test_eq("Pb + Pa == Pc (mixed)", Pbam.to_affine().serialize(), Pc_bytes);
             }
 
+            for(size_t i = 0; i != 16; ++i) {
+               const auto pt1 = curve->mul_by_g(curve->random_scalar(rng), rng).to_affine();
+               const auto pt2 = curve->mul_by_g(curve->random_scalar(rng), rng).to_affine();
+
+               const auto s1 = curve->random_scalar(rng);
+               const auto s2 = curve->random_scalar(rng);
+
+               const auto ref = (curve->mul(pt1, s1, rng) + curve->mul(pt2, s2, rng)).to_affine();
+               const auto mul2 = curve->mul2_vartime(pt1, s1, pt2, s2).to_affine();
+
+               result.test_eq("ref == mul2", ref.serialize(), mul2.serialize());
+            }
+
+            // Test cases where the two points have a linear relation
+            for(size_t i = 0; i != 16; ++i) {
+               const auto pt1 = curve->generator();
+
+               auto pt2 = [&]() {
+                  const auto lo = curve->scalar_from_u32(static_cast<uint32_t>(i / 2));
+                  auto x = curve->mul_by_g(lo, rng);
+                  if(i % 2 == 0) {
+                     x = x.negate();
+                  }
+                  return x.to_affine();
+               }();
+
+               const auto s1 = curve->random_scalar(rng);
+               const auto s2 = curve->random_scalar(rng);
+
+               const auto ref = (curve->mul(pt1, s1, rng) + curve->mul(pt2, s2, rng)).to_affine();
+               const auto mul2 = curve->mul2_vartime(pt1, s1, pt2, s2).to_affine();
+
+               result.test_eq("ref == mul2", ref.serialize(), mul2.serialize());
+            }
+
             result.end_timer();
 
             results.push_back(result);

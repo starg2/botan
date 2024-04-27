@@ -29,6 +29,15 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
          return stash(tbl.mul(from_stash(scalar), rng));
       }
 
+      ProjectivePoint mul2_vartime(const AffinePoint& pt1,
+                                   const Scalar& s1,
+                                   const AffinePoint& pt2,
+                                   const Scalar& s2) const override {
+         // Doesn't make sense to use a large window when we throw away the table
+         auto tbl = WindowedMul2Table<C, 1>(from_stash(pt1), from_stash(pt2));
+         return stash(tbl.mul2_vartime(from_stash(s1), from_stash(s2)));
+      }
+
       Scalar base_point_mul_x_mod_order(const Scalar& scalar, RandomNumberGenerator& rng) const override {
          auto pt = m_mul_by_g.mul(from_stash(scalar), rng);
          const auto x_bytes = pt.to_affine().x().serialize();
@@ -54,6 +63,8 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
       ProjectivePoint point_add_mixed(const ProjectivePoint& a, const AffinePoint& b) const override {
          return stash(from_stash(a) + from_stash(b));
       }
+
+      ProjectivePoint point_negate(const ProjectivePoint& pt) const override { return stash(from_stash(pt).negate()); }
 
       bool affine_point_is_identity(const AffinePoint& pt) const override { return from_stash(pt).is_identity(); }
 
@@ -123,6 +134,8 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
       Scalar scalar_zero() const override { return stash(C::Scalar::zero()); }
 
       Scalar scalar_one() const override { return stash(C::Scalar::one()); }
+
+      Scalar scalar_from_u32(uint32_t x) const override { return stash(C::Scalar::from_word(x)); }
 
       Scalar random_scalar(RandomNumberGenerator& rng) const override { return stash(C::Scalar::random(rng)); }
 
