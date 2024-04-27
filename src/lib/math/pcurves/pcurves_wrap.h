@@ -34,7 +34,8 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
                                    const AffinePoint& pt2,
                                    const Scalar& s2) const override {
          // Doesn't make sense to use a large window when we throw away the table
-         auto tbl = WindowedMul2Table<C, 1>(from_stash(pt1), from_stash(pt2));
+         // Even so, W=2 seems slightly better than W=1 here
+         auto tbl = WindowedMul2Table<C, 2>(from_stash(pt1), from_stash(pt2));
          return stash(tbl.mul2_vartime(from_stash(s1), from_stash(s2)));
       }
 

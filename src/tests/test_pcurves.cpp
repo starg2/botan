@@ -246,7 +246,7 @@ class Pcurve_Point_Tests final : public Test {
                const auto ref = (curve->mul(pt1, s1, rng) + curve->mul(pt2, s2, rng)).to_affine();
                const auto mul2 = curve->mul2_vartime(pt1, s1, pt2, s2).to_affine();
 
-               result.test_eq("ref == mul2", ref.serialize(), mul2.serialize());
+               result.test_eq("ref == mul2 (linear relation)", ref.serialize(), mul2.serialize());
             }
 
             result.end_timer();

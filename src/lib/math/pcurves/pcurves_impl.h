@@ -1223,30 +1223,43 @@ class WindowedMul2Table final {
 
       static const constinit size_t Windows = (Scalar::BITS + WindowBits - 1) / WindowBits;
 
-      // 2^(2*W) elements, less the identity element
       static const constinit size_t WindowSize = (1 << WindowBits);
-      static const constinit size_t TableSize = (1 << (2 * WindowBits));
+
+      // 2^(2*W) elements, less the identity element
+      static const constinit size_t TableSize = (1 << (2 * WindowBits)) - 1;
 
       WindowedMul2Table(const AffinePoint& x, const AffinePoint& y) {
          std::vector<ProjectivePoint> table;
          table.reserve(TableSize);
 
-         // todo don't include identity in the table
-         table.push_back(ProjectivePoint::identity());
+         for(size_t i = 0; i != TableSize; ++i) {
+            const size_t t_i = (i + 1);
+            const size_t x_i = t_i % WindowSize;
+            const size_t y_i = (t_i >> WindowBits) % WindowSize;
 
-         for(size_t i = 1; i != TableSize; ++i) {
-            const size_t x_i = i % WindowSize;
-            const size_t y_i = (i >> WindowBits) % WindowSize;
+            auto next_tbl_e = [&]() {
+               if(x_i % 2 == 0 && y_i % 2 == 0) {
+                  return table[(t_i / 2) - 1].dbl();
+               } else if(x_i > 0 && y_i > 0) {
+                  return table[x_i - 1] + table[(y_i << WindowBits) - 1];
+               } else if(x_i > 0 && y_i == 0) {
+                  if(x_i == 1) {
+                     return ProjectivePoint::from_affine(x);
+                  } else {
+                     return table[x_i - 1 - 1] + x;
+                  }
+               } else if(x_i == 0 && y_i > 0) {
+                  if(y_i == 1) {
+                     return ProjectivePoint::from_affine(y);
+                  } else {
+                     return table[((y_i - 1) << WindowBits) - 1] + y;
+                  }
+               } else {
+                  BOTAN_ASSERT_UNREACHABLE();
+               }
+            };
 
-            if(x_i % 2 == 0 && y_i % 2 == 0) {
-               table.push_back(table[i / 2].dbl());
-            } else if(x_i > 0 && y_i > 0) {
-               table.push_back(table[x_i] + table[y_i << WindowBits]);
-            } else if(x_i > 0 && y_i == 0) {
-               table.push_back(table[x_i - 1] + x);
-            } else if(x_i == 0 && y_i > 0) {
-               table.push_back(table[(y_i - 1) << WindowBits] + y);
-            }
+            table.push_back(next_tbl_e());
          }
 
          m_table = ProjectivePoint::to_affine_batch(table);
@@ -1269,7 +1282,7 @@ class WindowedMul2Table final {
             const size_t window = w_1 + (w_2 << WindowBits);
 
             if(window > 0) {
-               accum += m_table[window];
+               accum += m_table[window - 1];
             }
          }
 
