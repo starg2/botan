@@ -39,6 +39,18 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
          return stash(tbl.mul2_vartime(from_stash(s1), from_stash(s2)));
       }
 
+      Scalar mul2_vartime_x_mod_order(const AffinePoint& pt1,
+                                      const Scalar& s1,
+                                      const AffinePoint& pt2,
+                                      const Scalar& s2) const override {
+         // Doesn't make sense to use a large window when we throw away the table
+         // Even so, W=2 seems slightly better than W=1 here
+         auto tbl = WindowedMul2Table<C, 2>(from_stash(pt1), from_stash(pt2));
+         auto pt = tbl.mul2_vartime(from_stash(s1), from_stash(s2));
+         const auto x_bytes = pt.to_affine().x().serialize();
+         return stash(C::Scalar::from_wide_bytes(std::span{x_bytes}));
+      }
+
       Scalar base_point_mul_x_mod_order(const Scalar& scalar, RandomNumberGenerator& rng) const override {
          auto pt = m_mul_by_g.mul(from_stash(scalar), rng);
          const auto x_bytes = pt.to_affine().x().serialize();

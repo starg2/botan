@@ -1256,31 +1256,60 @@ class Speed final : public Command {
             }
 
             // Setup (not timed)
+            const auto g = curve->generator();
             const auto x = curve->random_scalar(rng());
+            const auto y = curve->mul_by_g(x, rng()).to_affine();
             const auto e = curve->random_scalar(rng());
 
             auto b = curve->random_scalar(rng());
             auto b_inv = b.invert();
 
             auto sign_timer = make_timer("ECDSA sign pcurves " + group_name);
+            auto verify_timer = make_timer("ECDSA verify pcurves " + group_name);
 
             while(sign_timer->under(runtime)) {
                sign_timer->start();
-               const auto k = curve->random_scalar(rng());
-               const auto r = curve->base_point_mul_x_mod_order(k, rng());
-               const auto k_inv = k.invert();
-               b = b.square();
-               b_inv = b_inv.square();
-               const auto be = b * e;
-               const auto bx = b * x;
-               const auto bxr_e = (bx * r) + be;
-               const auto s = (k_inv * bxr_e) * b_inv;
-               const auto r_bytes = r.serialize();
-               const auto s_bytes = s.serialize();
+
+               auto [sig_r, sig_s] = [&]() {
+                  const auto k = curve->random_scalar(rng());
+                  const auto r = curve->base_point_mul_x_mod_order(k, rng());
+                  const auto k_inv = k.invert();
+                  b = b.square();
+                  b_inv = b_inv.square();
+                  const auto be = b * e;
+                  const auto bx = b * x;
+                  const auto bxr_e = (bx * r) + be;
+                  const auto s = (k_inv * bxr_e) * b_inv;
+                  return std::make_pair(r, s);
+               }();
+
                sign_timer->stop();
+
+               verify_timer->start();
+
+               auto result = [&](const Botan::PCurve::PrimeOrderCurve::Scalar& r,
+                                 const Botan::PCurve::PrimeOrderCurve::Scalar& s) {
+                  if(r.is_zero() || s.is_zero()) {
+                     return false;
+                  }
+
+                  auto w = s.invert();
+
+                  auto u1 = e * w;
+                  auto u2 = r * w;
+
+                  auto v = curve->mul2_vartime_x_mod_order(g, u1, y, u2);
+
+                  return (r == v);
+               }(sig_r, sig_s);
+
+               BOTAN_ASSERT(result, "ECDSA-pcurves signature ok");
+
+               verify_timer->stop();
             }
 
             record_result(sign_timer);
+            record_result(verify_timer);
          }
       }
 

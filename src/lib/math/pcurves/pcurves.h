@@ -113,6 +113,8 @@ class BOTAN_TEST_API PrimeOrderCurve {
 
             friend Scalar operator-(const Scalar& a, const Scalar& b) { return a.m_curve->scalar_sub(a, b); }
 
+            friend bool operator==(const Scalar& a, const Scalar& b) { return a.m_curve->scalar_equal(a, b); }
+
             Scalar negate() const { return m_curve->scalar_negate(*this); }
 
             Scalar square() const { return m_curve->scalar_square(*this); }
@@ -227,6 +229,11 @@ class BOTAN_TEST_API PrimeOrderCurve {
                                            const Scalar& s1,
                                            const AffinePoint& pt2,
                                            const Scalar& s2) const = 0;
+
+      virtual Scalar mul2_vartime_x_mod_order(const AffinePoint& pt1,
+                                              const Scalar& s1,
+                                              const AffinePoint& pt2,
+                                              const Scalar& s2) const = 0;
 
       virtual AffinePoint generator() const = 0;
 
