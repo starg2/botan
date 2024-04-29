@@ -270,7 +270,7 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
       }
 
    private:
-      const PrecomputedBaseMulTable<C> m_mul_by_g;
+      const PrecomputedBaseMulTable<C, 7> m_mul_by_g;
 };
 
 }  // namespace Botan::PCurve

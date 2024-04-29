@@ -1076,16 +1076,15 @@ class UnblindedScalarBits final {
       std::vector<uint8_t> m_bytes;
 };
 
-template <typename C>
+template <typename C, size_t W>
 class PrecomputedBaseMulTable final {
    public:
       typedef typename C::Scalar Scalar;
       typedef typename C::AffinePoint AffinePoint;
       typedef typename C::ProjectivePoint ProjectivePoint;
 
-      // TODO allow config?
-      static const constinit size_t WindowBits = 4;
-      static_assert(WindowBits >= 1 && WindowBits < 8);
+      static const constinit size_t WindowBits = W;
+      static_assert(WindowBits >= 1 && WindowBits <= 8);
 
       typedef BlindedScalarBits<C, WindowBits> BlindedScalar;
 
@@ -1155,7 +1154,7 @@ class WindowedMulTable final {
       typedef typename C::ProjectivePoint ProjectivePoint;
 
       static const constinit size_t WindowBits = W;
-      static_assert(WindowBits >= 1 && WindowBits < 8);
+      static_assert(WindowBits >= 1 && WindowBits <= 8);
 
       typedef BlindedScalarBits<C, WindowBits> BlindedScalar;
 
@@ -1213,6 +1212,7 @@ class WindowedMulTable final {
 template <typename C, size_t W>
 class WindowedMul2Table final {
    public:
+      // We look at 2*W bits of scalar per iteration
       static_assert(W >= 1 && W <= 4);
 
       typedef typename C::Scalar Scalar;
