@@ -99,10 +99,7 @@ inline constexpr auto monty_redc_pdash1(const std::array<W, 2 * N>& z, const std
    // w1 is the final part, which is not stored in the workspace
    const W w1 = accum.extract();
 
-   std::array<W, N> r = {0};
-   for(size_t i = 0; i != N; ++i) {
-      r[i] = z[i];
-   }
+   std::array<W, N> r;
    bigint_monty_maybe_sub<N>(r.data(), w1, ws.data(), p.data());
 
    return r;
@@ -147,10 +144,7 @@ inline constexpr auto monty_redc(const std::array<W, 2 * N>& z, const std::array
    // w1 is the final part, which is not stored in the workspace
    const W w1 = accum.extract();
 
-   std::array<W, N> r = {0};
-   for(size_t i = 0; i != N; ++i) {
-      r[i] = z[i];
-   }
+   std::array<W, N> r;
    bigint_monty_maybe_sub<N>(r.data(), w1, ws.data(), p.data());
 
    return r;
