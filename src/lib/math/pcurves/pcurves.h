@@ -252,6 +252,10 @@ class BOTAN_TEST_API PrimeOrderCurve {
                                               const AffinePoint& pt2,
                                               const Scalar& s2) const = 0;
 
+      virtual Scalar mul2_vartime_x_mod_order_with_table(const PrecomputedMul2Table& table,
+                                                         const Scalar& s1,
+                                                         const Scalar& s2) const = 0;
+
       virtual AffinePoint generator() const = 0;
 
       virtual AffinePoint point_to_affine(const ProjectivePoint& pt) const = 0;

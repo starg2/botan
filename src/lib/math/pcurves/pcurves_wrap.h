@@ -95,6 +95,19 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
          }
       }
 
+      Scalar mul2_vartime_x_mod_order_with_table(const PrecomputedMul2Table& tableb,
+                                                 const Scalar& s1,
+                                                 const Scalar& s2) const override {
+         try {
+            const auto& table = dynamic_cast<const PrecomputedMul2TableC&>(tableb);
+            const auto pt = table.table().mul2_vartime(from_stash(s1), from_stash(s2));
+            const auto x_bytes = pt.to_affine().x().serialize();
+            return stash(C::Scalar::from_wide_bytes(std::span{x_bytes}));
+         } catch(std::bad_cast&) {
+            throw Invalid_Argument("Curve mismatch");
+         }
+      }
+
       ProjectivePoint mul2_vartime(const AffinePoint& pt1,
                                    const Scalar& s1,
                                    const AffinePoint& pt2,

@@ -1263,6 +1263,8 @@ class Speed final : public Command {
             const auto y = curve->mul_by_g(x, rng()).to_affine();
             const auto e = curve->random_scalar(rng());
 
+            const auto gy_tab = curve->mul2_setup(g, y);
+
             auto b = curve->random_scalar(rng());
             auto b_inv = b.invert();
 
@@ -1300,7 +1302,7 @@ class Speed final : public Command {
                   auto u1 = e * w;
                   auto u2 = r * w;
 
-                  auto v = curve->mul2_vartime_x_mod_order(g, u1, y, u2);
+                  auto v = curve->mul2_vartime_x_mod_order_with_table(*gy_tab, u1, u2);
 
                   return (r == v);
                }(sig_r, sig_s);
