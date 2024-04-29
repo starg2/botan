@@ -1171,7 +1171,9 @@ class Speed final : public Command {
                      pcurves_base_timer->run([&]() { return curve->mul_by_g(s.value(), rng()).to_affine(); });
 
                      auto g = curve->generator();
-                     pcurves_var_timer->run([&]() { return curve->mul(g, s.value(), rng()).to_affine(); });
+                     auto g_tab = curve->mul_setup(g);
+                     pcurves_var_timer->run(
+                        [&]() { return curve->mul_with_table(*g_tab, s.value(), rng()).to_affine(); });
 
                      auto h = curve->mul(g, s.value(), rng()).to_affine();
                      pcurves_mul2_timer->run(

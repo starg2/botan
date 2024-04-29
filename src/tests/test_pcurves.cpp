@@ -192,6 +192,9 @@ class Pcurve_Point_Tests final : public Test {
 
             for(size_t i = 0; i != 16; ++i) {
                const auto pt = curve->mul_by_g(curve->random_scalar(rng), rng).to_affine();
+
+               const auto tbl = curve->mul_setup(pt);
+
                const auto a = curve->random_scalar(rng);
                const auto b = curve->random_scalar(rng);
                const auto c = a + b;
@@ -199,6 +202,14 @@ class Pcurve_Point_Tests final : public Test {
                const auto Pa = curve->mul(pt, a, rng);
                const auto Pb = curve->mul(pt, b, rng);
                const auto Pc = curve->mul(pt, c, rng);
+
+               const auto Pat = curve->mul_with_table(*tbl, a, rng);
+               const auto Pbt = curve->mul_with_table(*tbl, b, rng);
+               const auto Pct = curve->mul_with_table(*tbl, c, rng);
+
+               result.test_eq("Pa == Pat", Pa.to_affine().serialize(), Pat.to_affine().serialize());
+               result.test_eq("Pb == Pbt", Pa.to_affine().serialize(), Pat.to_affine().serialize());
+               result.test_eq("Pc == Pct", Pa.to_affine().serialize(), Pat.to_affine().serialize());
 
                const auto Pc_bytes = Pc.to_affine().serialize();
 
@@ -221,10 +232,14 @@ class Pcurve_Point_Tests final : public Test {
                const auto s1 = curve->random_scalar(rng);
                const auto s2 = curve->random_scalar(rng);
 
+               const auto mul2_table = curve->mul2_setup(pt1, pt2);
+
                const auto ref = (curve->mul(pt1, s1, rng) + curve->mul(pt2, s2, rng)).to_affine();
                const auto mul2 = curve->mul2_vartime(pt1, s1, pt2, s2).to_affine();
+               const auto mul2t = curve->mul2_vartime_with_table(*mul2_table, s1, s2).to_affine();
 
                result.test_eq("ref == mul2", ref.serialize(), mul2.serialize());
+               result.test_eq("ref == mul2t", ref.serialize(), mul2t.serialize());
             }
 
             // Test cases where the two points have a linear relation
@@ -243,10 +258,14 @@ class Pcurve_Point_Tests final : public Test {
                const auto s1 = curve->random_scalar(rng);
                const auto s2 = curve->random_scalar(rng);
 
+               const auto mul2_table = curve->mul2_setup(pt1, pt2);
+
                const auto ref = (curve->mul(pt1, s1, rng) + curve->mul(pt2, s2, rng)).to_affine();
                const auto mul2 = curve->mul2_vartime(pt1, s1, pt2, s2).to_affine();
+               const auto mul2t = curve->mul2_vartime_with_table(*mul2_table, s1, s2).to_affine();
 
-               result.test_eq("ref == mul2 (linear relation)", ref.serialize(), mul2.serialize());
+               result.test_eq("ref == mul2", ref.serialize(), mul2.serialize());
+               result.test_eq("ref == mul2t", ref.serialize(), mul2t.serialize());
             }
 
             result.end_timer();

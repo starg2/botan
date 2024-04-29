@@ -215,6 +215,10 @@ class BOTAN_TEST_API PrimeOrderCurve {
             StorageUnit m_z;
       };
 
+      class PrecomputedMulTable;
+
+      class PrecomputedMul2Table;
+
       virtual ~PrimeOrderCurve() = default;
 
       virtual std::optional<PrimeOrderCurveId> curve_id() const = 0;
@@ -224,6 +228,19 @@ class BOTAN_TEST_API PrimeOrderCurve {
       virtual Scalar base_point_mul_x_mod_order(const Scalar& scalar, RandomNumberGenerator& rng) const = 0;
 
       virtual ProjectivePoint mul(const AffinePoint& pt, const Scalar& scalar, RandomNumberGenerator& rng) const = 0;
+
+      virtual std::shared_ptr<const PrecomputedMulTable> mul_setup(const AffinePoint& pt) const = 0;
+
+      virtual ProjectivePoint mul_with_table(const PrecomputedMulTable& table,
+                                             const Scalar& scalar,
+                                             RandomNumberGenerator& rng) const = 0;
+
+      virtual std::shared_ptr<const PrecomputedMul2Table> mul2_setup(const AffinePoint& pt1,
+                                                                     const AffinePoint& pt2) const = 0;
+
+      virtual ProjectivePoint mul2_vartime_with_table(const PrecomputedMul2Table& table,
+                                                      const Scalar& s1,
+                                                      const Scalar& s2) const = 0;
 
       virtual ProjectivePoint mul2_vartime(const AffinePoint& pt1,
                                            const Scalar& s1,

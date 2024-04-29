@@ -1077,7 +1077,7 @@ class UnblindedScalarBits final {
 };
 
 template <typename C>
-class PrecomputedMulTable final {
+class PrecomputedBaseMulTable final {
    public:
       typedef typename C::Scalar Scalar;
       typedef typename C::AffinePoint AffinePoint;
@@ -1096,7 +1096,7 @@ class PrecomputedMulTable final {
 
       static const constinit size_t TableSize = Windows * WindowElements;
 
-      PrecomputedMulTable(const AffinePoint& p) : m_table{} {
+      PrecomputedBaseMulTable(const AffinePoint& p) : m_table{} {
          std::vector<ProjectivePoint> table;
          table.reserve(TableSize);
 
@@ -1147,7 +1147,7 @@ class PrecomputedMulTable final {
       std::vector<AffinePoint> m_table;
 };
 
-template <typename C, size_t W = 5>
+template <typename C, size_t W>
 class WindowedMulTable final {
    public:
       typedef typename C::Scalar Scalar;
@@ -1155,7 +1155,7 @@ class WindowedMulTable final {
       typedef typename C::ProjectivePoint ProjectivePoint;
 
       static const constinit size_t WindowBits = W;
-      static_assert(WindowBits >= 1 && WindowBits < 6);
+      static_assert(WindowBits >= 1 && WindowBits < 8);
 
       typedef BlindedScalarBits<C, WindowBits> BlindedScalar;
 
@@ -1210,10 +1210,10 @@ class WindowedMulTable final {
       std::vector<AffinePoint> m_table;
 };
 
-template <typename C, size_t W = 1>
+template <typename C, size_t W>
 class WindowedMul2Table final {
    public:
-      static_assert(W >= 1 && W < 4);
+      static_assert(W >= 1 && W <= 4);
 
       typedef typename C::Scalar Scalar;
       typedef typename C::AffinePoint AffinePoint;

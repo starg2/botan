@@ -12,9 +12,44 @@
 
 namespace Botan::PCurve {
 
+class PrimeOrderCurve::PrecomputedMulTable {
+   public:
+      virtual ~PrecomputedMulTable() = default;
+};
+
+class PrimeOrderCurve::PrecomputedMul2Table {
+   public:
+      virtual ~PrecomputedMul2Table() = default;
+};
+
 template <PrimeOrderCurveId::Id ID, typename C>
 class PrimeOrderCurveImpl final : public PrimeOrderCurve {
    public:
+      class PrecomputedMulTableC final : public PrimeOrderCurve::PrecomputedMulTable {
+         public:
+            static constexpr size_t WindowBits = 5;
+
+            const WindowedMulTable<C, WindowBits>& table() const { return m_table; }
+
+            explicit PrecomputedMulTableC(const typename C::AffinePoint& pt) : m_table(pt) {}
+
+         private:
+            WindowedMulTable<C, WindowBits> m_table;
+      };
+
+      class PrecomputedMul2TableC final : public PrimeOrderCurve::PrecomputedMul2Table {
+         public:
+            static constexpr size_t WindowBits = 4;
+
+            const WindowedMul2Table<C, WindowBits>& table() const { return m_table; }
+
+            explicit PrecomputedMul2TableC(const typename C::AffinePoint& x, const typename C::AffinePoint& y) :
+                  m_table(x, y) {}
+
+         private:
+            WindowedMul2Table<C, WindowBits> m_table;
+      };
+
       static_assert(C::OrderBits <= PrimeOrderCurve::MaximumBitLength);
       static_assert(C::PrimeFieldBits <= PrimeOrderCurve::MaximumBitLength);
 
@@ -25,8 +60,39 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
       }
 
       ProjectivePoint mul(const AffinePoint& pt, const Scalar& scalar, RandomNumberGenerator& rng) const override {
-         auto tbl = WindowedMulTable<C>(from_stash(pt));
+         auto tbl = WindowedMulTable<C, 5>(from_stash(pt));
          return stash(tbl.mul(from_stash(scalar), rng));
+      }
+
+      std::shared_ptr<const PrecomputedMulTable> mul_setup(const AffinePoint& pt) const override {
+         return std::make_shared<PrecomputedMulTableC>(from_stash(pt));
+      }
+
+      ProjectivePoint mul_with_table(const PrecomputedMulTable& tableb,
+                                     const Scalar& scalar,
+                                     RandomNumberGenerator& rng) const override {
+         try {
+            const auto& table = dynamic_cast<const PrecomputedMulTableC&>(tableb);
+            return stash(table.table().mul(from_stash(scalar), rng));
+         } catch(std::bad_cast&) {
+            throw Invalid_Argument("Curve mismatch");
+         }
+      }
+
+      std::shared_ptr<const PrecomputedMul2Table> mul2_setup(const AffinePoint& x,
+                                                             const AffinePoint& y) const override {
+         return std::make_shared<PrecomputedMul2TableC>(from_stash(x), from_stash(y));
+      }
+
+      ProjectivePoint mul2_vartime_with_table(const PrecomputedMul2Table& tableb,
+                                              const Scalar& s1,
+                                              const Scalar& s2) const override {
+         try {
+            const auto& table = dynamic_cast<const PrecomputedMul2TableC&>(tableb);
+            return stash(table.table().mul2_vartime(from_stash(s1), from_stash(s2)));
+         } catch(std::bad_cast&) {
+            throw Invalid_Argument("Curve mismatch");
+         }
       }
 
       ProjectivePoint mul2_vartime(const AffinePoint& pt1,
@@ -204,7 +270,7 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
       }
 
    private:
-      const PrecomputedMulTable<C> m_mul_by_g;
+      const PrecomputedBaseMulTable<C> m_mul_by_g;
 };
 
 }  // namespace Botan::PCurve
