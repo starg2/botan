@@ -200,6 +200,15 @@ class IntMod final {
          return Self(r);
       }
 
+      Self dbl() const {
+         std::array<W, N> t = value();
+         W carry = shift_left<1>(t);
+
+         std::array<W, N> r;
+         bigint_monty_maybe_sub<N>(r.data(), carry, t.data(), P.data());
+         return Self(r);
+      }
+
       constexpr Self& operator+=(const Self& other) {
          std::array<W, N> t;
          W carry = bigint_add<W, N>(t, this->value(), other.value());
@@ -216,20 +225,29 @@ class IntMod final {
          // computation
 
          // In practice this function is called for 2, 3, 4, or 8
-         // It might be worth special casing these.
 
-         Self z = Self::zero();
-         Self x = a;
+         if(b == 2) {
+            return a.dbl();
+         } else if(b == 3) {
+            return a.dbl() + a;
+         } else if(b == 4) {
+            return a.dbl().dbl();
+         } else if(b == 8) {
+            return a.dbl().dbl().dbl();
+         } else {
+            Self z = Self::zero();
+            Self x = a;
 
-         while(b > 0) {
-            if(b & 1) {
-               z = z + x;
+            while(b > 0) {
+               if(b & 1) {
+                  z = z + x;
+               }
+               x = x.dbl();
+               b >>= 1;
             }
-            x += x;
-            b >>= 1;
-         }
 
-         return z;
+            return z;
+         }
       }
 
       friend constexpr Self operator*(const Self& a, const Self& b) {
