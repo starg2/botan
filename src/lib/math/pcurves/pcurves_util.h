@@ -67,7 +67,7 @@ inline constexpr auto monty_redc_pdash1(const std::array<W, 2 * N>& z, const std
 
    std::array<W, N> ws;
 
-   word3<word> accum;
+   word3<W> accum;
 
    accum.add(z[0]);
 
@@ -112,7 +112,7 @@ inline constexpr auto monty_redc(const std::array<W, 2 * N>& z, const std::array
 
    std::array<W, N> ws;
 
-   word3<word> accum;
+   word3<W> accum;
 
    accum.add(z[0]);
 
