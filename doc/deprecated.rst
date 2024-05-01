@@ -62,6 +62,11 @@ in a future major release.
   format is quite obscure and seemingly rarely implemented. Support
   for this encoding will be removed in a future release.
 
+- Currently `EC_Point` offers a wide variety of functionality almost
+  all of which was intended only for internal implementation. In a
+  future release, the only operations available for EC_Points will be
+  to extract the byte encoding of their affine x and y coordinates.
+
 - Currently it is possible to create an EC_Group with cofactor > 1.
   None of the builtin groups have composite order, and in the future
   it will be impossible to create composite order EC_Groups.
