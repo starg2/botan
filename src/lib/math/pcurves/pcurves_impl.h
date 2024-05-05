@@ -1058,7 +1058,7 @@ class BlindedScalarBits final {
          rng.randomize(maskb, mask_bytes);
 
          W mask[n_words] = {0};
-         load_be(mask, maskb, mask_words);
+         load_le(mask, maskb, mask_words);
 
          W mask_n[2 * n_words] = {0};
 
@@ -1108,6 +1108,8 @@ class PrecomputedBaseMulTable final {
 
       static const constinit size_t Windows = (BlindedScalar::Bits + WindowBits - 1) / WindowBits;
 
+      static_assert(Windows > 1);
+
       // 2^W elements, less the identity element
       static const constinit size_t WindowElements = (1 << WindowBits) - 1;
 
@@ -1139,20 +1141,21 @@ class PrecomputedBaseMulTable final {
       ProjectivePoint mul(const Scalar& s, RandomNumberGenerator& rng) const {
          const BlindedScalar bits(s, rng);
 
-         auto accum = ProjectivePoint::identity();
+         auto accum = [&]() {
+            const size_t w_i = bits.get_window(0);
+            const auto tbl_i = std::span{m_table.begin(), WindowElements};
+            auto pt = ProjectivePoint::from_affine(AffinePoint::ct_select(tbl_i, w_i));
+            pt.randomize_rep(rng);
+            return pt;
+         }();
 
-         for(size_t i = 0; i != Windows; ++i) {
+         for(size_t i = 1; i != Windows; ++i) {
             const size_t w_i = bits.get_window(WindowBits * i);
             const auto tbl_i = std::span{m_table.begin() + WindowElements * i, WindowElements};
-            const auto pt_i = AffinePoint::ct_select(tbl_i, w_i);
 
-            if(i == 0) {
-               accum = ProjectivePoint::from_affine(pt_i);
-            } else {
-               accum += pt_i;
-            }
+            accum += AffinePoint::ct_select(tbl_i, w_i);
 
-            if(i == 0 || i == Windows / 2) {
+            if(i <= 3) {
                accum.randomize_rep(rng);
             }
          }
@@ -1178,6 +1181,8 @@ class WindowedMulTable final {
 
       static const constinit size_t Windows = (BlindedScalar::Bits + WindowBits - 1) / WindowBits;
 
+      static_assert(Windows > 1);
+
       // 2^W elements, less the identity element
       static const constinit size_t TableSize = (1 << WindowBits) - 1;
 
@@ -1200,22 +1205,19 @@ class WindowedMulTable final {
       ProjectivePoint mul(const Scalar& s, RandomNumberGenerator& rng) const {
          const BlindedScalar bits(s, rng);
 
-         auto accum = ProjectivePoint::identity();
+         auto accum = [&]() {
+            const size_t w_i = bits.get_window((Windows - 1) * WindowBits);
+            auto pt = ProjectivePoint::from_affine(AffinePoint::ct_select(m_table, w_i));
+            pt.randomize_rep(rng);
+            return pt;
+         }();
 
-         for(size_t i = 0; i != Windows; ++i) {
-            if(i > 0) {
-               accum = accum.dbl_n(WindowBits);
-            }
+         for(size_t i = 1; i != Windows; ++i) {
+            accum = accum.dbl_n(WindowBits);
             const size_t w_i = bits.get_window((Windows - i - 1) * WindowBits);
-            const auto pt_i = AffinePoint::ct_select(m_table, w_i);
+            accum += AffinePoint::ct_select(m_table, w_i);
 
-            if(i == 0) {
-               accum = ProjectivePoint::from_affine(pt_i);
-            } else {
-               accum += pt_i;
-            }
-
-            if(i == 0 || i == Windows / 2) {
+            if(i <= 3) {
                accum.randomize_rep(rng);
             }
          }
