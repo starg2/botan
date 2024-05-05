@@ -25,6 +25,8 @@ class BOTAN_TEST_API RFC6979_Nonce_Generator final {
 
       ~RFC6979_Nonce_Generator();
 
+      const BigInt& nonce_for(std::span<const uint8_t> m_bytes);
+
       const BigInt& nonce_for(const BigInt& m);
 
    private:
