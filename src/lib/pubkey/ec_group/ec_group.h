@@ -2,7 +2,7 @@
 * ECC Domain Parameters
 *
 * (C) 2007 Falko Strenzke, FlexSecure GmbH
-*     2008-2010 Jack Lloyd
+*     2008-2010,2024 Jack Lloyd
 *
 * Botan is released under the Simplified BSD License (see license.txt)
 */
@@ -11,7 +11,9 @@
 #define BOTAN_ECC_DOMAIN_PARAMETERS_H_
 
 #include <botan/asn1_obj.h>
+#include <botan/ec_apoint.h>
 #include <botan/ec_point.h>
+#include <botan/ec_scalar.h>
 #include <memory>
 #include <set>
 #include <span>
@@ -36,6 +38,7 @@ enum class EC_Group_Source {
    ExternalSource,
 };
 
+class EC_Mul2Table_Data;
 class EC_Group_Data;
 class EC_Group_Data_Map;
 
@@ -207,6 +210,23 @@ class BOTAN_PUBLIC_API(2, 0) EC_Group final {
       */
       bool verify_public_element(const EC_Point& y) const;
 
+      /// Table for computing g*x + h*y
+      class Mul2Table final {
+         public:
+            Mul2Table(const EC_Group& group, const EC_Point& h);
+
+            Mul2Table(const EC_AffinePoint& h);
+
+            std::optional<EC_AffinePoint> mul2(const EC_Scalar& x, const EC_Scalar& y) const;
+
+            std::optional<EC_Scalar> mul2_x_mod_order(const EC_Scalar& x, const EC_Scalar& y) const;
+
+            ~Mul2Table();
+
+         private:
+            std::unique_ptr<EC_Mul2Table_Data> m_tbl;
+      };
+
       /**
       * Return the OID of these domain parameters
       * @result the OID
@@ -232,7 +252,13 @@ class BOTAN_PUBLIC_API(2, 0) EC_Group final {
       * Return group base point
       * @result base point
       */
-      const EC_Point& get_base_point() const;
+      const EC_Point& get_base_point() const { return generator(); }
+
+      /**
+      * Return the canonical group generator
+      * @result standard generator of the curve
+      */
+      const EC_Point& generator() const;
 
       /**
       * Return the x coordinate of the base point
@@ -260,6 +286,7 @@ class BOTAN_PUBLIC_API(2, 0) EC_Group final {
       * Multi exponentiate. Not constant time.
       * @return base_point*x + pt*y
       */
+      BOTAN_DEPRECATED("Use EC_Group::Mul2Table")
       EC_Point point_multiply(const BigInt& x, const EC_Point& pt, const BigInt& y) const;
 
       /**
@@ -269,6 +296,7 @@ class BOTAN_PUBLIC_API(2, 0) EC_Group final {
       * @param ws a temp workspace
       * @return base_point*k
       */
+      BOTAN_DEPRECATED("Use EC_AffinePoint and EC_Scalar")
       EC_Point blinded_base_point_multiply(const BigInt& k, RandomNumberGenerator& rng, std::vector<BigInt>& ws) const;
 
       /**
@@ -280,6 +308,7 @@ class BOTAN_PUBLIC_API(2, 0) EC_Group final {
       * @param ws a temp workspace
       * @return x coordinate of base_point*k
       */
+      BOTAN_DEPRECATED("Use EC_AffinePoint and EC_Scalar")
       BigInt blinded_base_point_multiply_x(const BigInt& k, RandomNumberGenerator& rng, std::vector<BigInt>& ws) const;
 
       /**
@@ -290,6 +319,7 @@ class BOTAN_PUBLIC_API(2, 0) EC_Group final {
       * @param ws a temp workspace
       * @return point*k
       */
+      BOTAN_DEPRECATED("Use EC_AffinePoint and EC_Scalar")
       EC_Point blinded_var_point_multiply(const EC_Point& point,
                                           const BigInt& k,
                                           RandomNumberGenerator& rng,
@@ -298,7 +328,7 @@ class BOTAN_PUBLIC_API(2, 0) EC_Group final {
       /**
       * Return a random scalar ie an integer in [1,order)
       */
-      BigInt random_scalar(RandomNumberGenerator& rng) const;
+      BOTAN_DEPRECATED("Use EC_Scalar::random") BigInt random_scalar(RandomNumberGenerator& rng) const;
 
       /**
       * Hash onto the curve.
@@ -409,7 +439,7 @@ class BOTAN_PUBLIC_API(2, 0) EC_Group final {
       /*
       * Reduce (x*y*z) modulo the order
       */
-      BOTAN_DEPRECATED("Deprecated no replacement")
+      BOTAN_DEPRECATED("Use EC_Scalar")
       BigInt multiply_mod_order(const BigInt& x, const BigInt& y, const BigInt& z) const;
 
       /*
@@ -444,6 +474,11 @@ class BOTAN_PUBLIC_API(2, 0) EC_Group final {
       */
       static OID EC_group_identity_from_order(const BigInt& order);
 
+      /*
+      * For internal use only
+      */
+      std::shared_ptr<EC_Group_Data> _data() const { return m_data; }
+
    private:
       static EC_Group_Data_Map& ec_group_data();
 
@@ -461,8 +496,9 @@ class BOTAN_PUBLIC_API(2, 0) EC_Group final {
                                                                const char* order,
                                                                const OID& oid);
 
-      // Member data
       const EC_Group_Data& data() const;
+
+      // Member data
       std::shared_ptr<EC_Group_Data> m_data;
       bool m_explicit_encoding = false;
 };
