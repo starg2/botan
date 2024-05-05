@@ -1,7 +1,7 @@
 /*
 * ECKCDSA (ISO/IEC 14888-3:2006/Cor.2:2009)
 * (C) 2016 René Korthaus, Sirrix AG
-* (C) 2018 Jack Lloyd
+* (C) 2018,2024 Jack Lloyd
 * (C) 2023 Philippe Lieser - Rohde & Schwarz Cybersecurity
 *
 * Botan is released under the Simplified BSD License (see license.txt)
@@ -10,13 +10,11 @@
 #include <botan/eckcdsa.h>
 
 #include <botan/hash.h>
-#include <botan/reducer.h>
 #include <botan/rng.h>
 #include <botan/internal/fmt.h>
 #include <botan/internal/keypair.h>
 #include <botan/internal/parsing.h>
 #include <botan/internal/pk_ops_impl.h>
-#include <botan/internal/point_mul.h>
 #include <botan/internal/scan_name.h>
 
 namespace Botan {
@@ -123,7 +121,7 @@ class ECKCDSA_Signature_Operation final : public PK_Ops::Signature {
    public:
       ECKCDSA_Signature_Operation(const ECKCDSA_PrivateKey& eckcdsa, std::string_view padding) :
             m_group(eckcdsa.domain()),
-            m_x(eckcdsa.private_value()),
+            m_x(EC_Scalar::from_bigint(m_group, eckcdsa.private_value())),
             m_hash(eckcdsa_signature_hash(padding)),
             m_prefix_used(false) {
          m_prefix = eckcdsa_prefix(eckcdsa.public_point(), m_hash->hash_block_size());
@@ -154,7 +152,7 @@ class ECKCDSA_Signature_Operation final : public PK_Ops::Signature {
       secure_vector<uint8_t> raw_sign(const uint8_t msg[], size_t msg_len, RandomNumberGenerator& rng);
 
       const EC_Group m_group;
-      const BigInt m_x;
+      const EC_Scalar m_x;
       std::unique_ptr<HashFunction> m_hash;
       std::vector<uint8_t> m_prefix;
       std::vector<BigInt> m_ws;
@@ -170,28 +168,25 @@ AlgorithmIdentifier ECKCDSA_Signature_Operation::algorithm_identifier() const {
 secure_vector<uint8_t> ECKCDSA_Signature_Operation::raw_sign(const uint8_t msg[],
                                                              size_t msg_len,
                                                              RandomNumberGenerator& rng) {
-   const BigInt k = m_group.random_scalar(rng);
-   const BigInt k_times_P_x = m_group.blinded_base_point_multiply_x(k, rng, m_ws);
+   const auto k = EC_Scalar::random(m_group, rng);
 
-   auto hash = m_hash->new_object();
-   hash->update(BigInt::encode_1363(k_times_P_x, m_group.get_order_bytes()));
-   secure_vector<uint8_t> c = hash->final();
+   m_hash->update(EC_AffinePoint::g_mul(k, rng, m_ws).x_bytes());
+   secure_vector<uint8_t> c = m_hash->final();
    truncate_hash_if_needed(c, m_group.get_order_bytes());
 
    const auto r = c;
 
    BOTAN_ASSERT_NOMSG(msg_len == c.size());
    xor_buf(c, msg, c.size());
-   BigInt w(c.data(), c.size());
-   w = m_group.mod_order(w);
+   auto w = EC_Scalar::from_bytes_mod_order(m_group, c);
 
-   const BigInt s = m_group.multiply_mod_order(m_x, k - w);
+   const auto s = m_x * (k - w);
    if(s.is_zero()) {
       throw Internal_Error("During ECKCDSA signature generation created zero s");
    }
 
    secure_vector<uint8_t> output = r;
-   output += BigInt::encode_1363(s, m_group.get_order_bytes());
+   output += s.serialize();
    return output;
 }
 
@@ -202,7 +197,7 @@ class ECKCDSA_Verification_Operation final : public PK_Ops::Verification {
    public:
       ECKCDSA_Verification_Operation(const ECKCDSA_PublicKey& eckcdsa, std::string_view padding) :
             m_group(eckcdsa.domain()),
-            m_gy_mul(m_group.get_base_point(), eckcdsa.public_point()),
+            m_gy_mul(m_group, eckcdsa.public_point()),
             m_hash(eckcdsa_signature_hash(padding)),
             m_prefix_used(false) {
          m_prefix = eckcdsa_prefix(eckcdsa.public_point(), m_hash->hash_block_size());
@@ -210,7 +205,7 @@ class ECKCDSA_Verification_Operation final : public PK_Ops::Verification {
 
       ECKCDSA_Verification_Operation(const ECKCDSA_PublicKey& eckcdsa, const AlgorithmIdentifier& alg_id) :
             m_group(eckcdsa.domain()),
-            m_gy_mul(m_group.get_base_point(), eckcdsa.public_point()),
+            m_gy_mul(m_group, eckcdsa.public_point()),
             m_hash(eckcdsa_signature_hash(alg_id)),
             m_prefix_used(false) {
          m_prefix = eckcdsa_prefix(eckcdsa.public_point(), m_hash->hash_block_size());
@@ -226,7 +221,7 @@ class ECKCDSA_Verification_Operation final : public PK_Ops::Verification {
       bool verify(const uint8_t msg[], size_t msg_len, const uint8_t sig[], size_t sig_len);
 
       const EC_Group m_group;
-      const EC_Point_Multi_Point_Precompute m_gy_mul;
+      const EC_Group::Mul2Table m_gy_mul;
       std::vector<uint8_t> m_prefix;
       std::unique_ptr<HashFunction> m_hash;
       bool m_prefix_used;
@@ -259,30 +254,22 @@ bool ECKCDSA_Verification_Operation::verify(const uint8_t msg[], size_t msg_len,
 
    secure_vector<uint8_t> r(sig, sig + size_r);
 
-   // check that 0 < s < q
-   const BigInt s(sig + size_r, order_bytes);
+   if(auto s = EC_Scalar::deserialize(m_group, std::span{sig + size_r, order_bytes})) {
+      secure_vector<uint8_t> r_xor_e(r);
+      xor_buf(r_xor_e, msg, r.size());
 
-   if(s <= 0 || s >= m_group.get_order()) {
-      return false;
+      const auto w = EC_Scalar::from_bytes_mod_order(m_group, r_xor_e);
+
+      if(auto q = m_gy_mul.mul2(w, s.value())) {
+         m_hash->update(q.value().x_bytes());
+         secure_vector<uint8_t> v = m_hash->final();
+         truncate_hash_if_needed(v, m_group.get_order_bytes());
+
+         return (v == r);
+      }
    }
 
-   secure_vector<uint8_t> r_xor_e(r);
-   xor_buf(r_xor_e, msg, r.size());
-   BigInt w(r_xor_e.data(), r_xor_e.size());
-   w = m_group.mod_order(w);
-
-   const EC_Point q = m_gy_mul.multi_exp(w, s);
-   if(q.is_zero()) {
-      return false;
-   }
-
-   const auto c = q.x_bytes();
-   auto c_hash = m_hash->new_object();
-   c_hash->update(c.data(), c.size());
-   secure_vector<uint8_t> v = c_hash->final();
-   truncate_hash_if_needed(v, m_group.get_order_bytes());
-
-   return (v == r);
+   return false;
 }
 
 }  // namespace
