@@ -79,6 +79,8 @@ class BOTAN_UNSTABLE_API EC_AffinePoint final {
 
       ~EC_AffinePoint();
 
+      const std::shared_ptr<EC_Group_Data>& _group() const { return m_group; }
+
    private:
       friend class EC_Mul2Table_Data;
 

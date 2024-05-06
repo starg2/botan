@@ -16,11 +16,21 @@
 
 namespace Botan {
 
-class EC_Scalar_Data final {
-   public:
-      EC_Scalar_Data(BigInt v) : m_v(std::move(v)) {}
+class EC_Scalar;
+class EC_AffinePoint;
 
-      std::unique_ptr<EC_Scalar_Data> clone() const { return std::make_unique<EC_Scalar_Data>(m_v); }
+class EC_Scalar_Data {
+   public:
+      virtual ~EC_Scalar_Data() = default;
+
+      virtual std::unique_ptr<EC_Scalar_Data> clone() const = 0;
+};
+
+class EC_Scalar_Data_BigInt final : public EC_Scalar_Data {
+   public:
+      EC_Scalar_Data_BigInt(BigInt v) : m_v(std::move(v)) {}
+
+      std::unique_ptr<EC_Scalar_Data> clone() const override { return std::make_unique<EC_Scalar_Data_BigInt>(m_v); }
 
       const BigInt& value() const { return m_v; }
 
@@ -59,6 +69,27 @@ class EC_Point_Data final {
    private:
       EC_Point m_pt;
       secure_vector<uint8_t> m_xy;
+};
+
+class EC_Mul2Table_Data {
+   public:
+      virtual ~EC_Mul2Table_Data() = default;
+
+      virtual std::optional<EC_AffinePoint> mul2(const EC_Scalar& x, const EC_Scalar& y) const = 0;
+
+      virtual std::optional<EC_Scalar> mul2_x_mod_order(const EC_Scalar& x, const EC_Scalar& y) const = 0;
+};
+
+class EC_Mul2Table_Data_BigInt final : public EC_Mul2Table_Data {
+   public:
+      EC_Mul2Table_Data_BigInt(const EC_AffinePoint& h);
+
+      std::optional<EC_AffinePoint> mul2(const EC_Scalar& x, const EC_Scalar& y) const override;
+
+      std::optional<EC_Scalar> mul2_x_mod_order(const EC_Scalar& x, const EC_Scalar& y) const override;
+   private:
+      std::shared_ptr<EC_Group_Data> m_group;
+      EC_Point_Multi_Point_Precompute m_tbl;
 };
 
 class EC_Group_Data final {
@@ -159,65 +190,73 @@ class EC_Group_Data final {
 
       EC_Group_Source source() const { return m_source; }
 
+      std::unique_ptr<EC_Mul2Table_Data> make_mul2_table(const EC_AffinePoint& h) const {
+         return std::make_unique<EC_Mul2Table_Data_BigInt>(h);
+      }
+
       std::unique_ptr<EC_Scalar_Data> scalar_from_bytes_with_trunc(std::span<const uint8_t> bytes) const {
          auto bn = BigInt::from_bytes_with_max_bits(bytes.data(), bytes.size(), m_order_bits);
-         return std::make_unique<EC_Scalar_Data>(mod_order(bn));
+         return std::make_unique<EC_Scalar_Data_BigInt>(mod_order(bn));
       }
 
       std::unique_ptr<EC_Scalar_Data> scalar_from_bytes_mod_order(std::span<const uint8_t> bytes) const {
-         return std::make_unique<EC_Scalar_Data>(mod_order(BigInt(bytes)));
+         return std::make_unique<EC_Scalar_Data_BigInt>(mod_order(BigInt(bytes)));
       }
 
       std::unique_ptr<EC_Scalar_Data> scalar_random(RandomNumberGenerator& rng) const {
-         return std::make_unique<EC_Scalar_Data>(BigInt::random_integer(rng, BigInt::one(), m_order));
+         return std::make_unique<EC_Scalar_Data_BigInt>(BigInt::random_integer(rng, BigInt::one(), m_order));
       }
 
-      bool scalar_is_zero(const EC_Scalar_Data& s) const { return s.value().is_zero(); }
+      bool scalar_is_zero(const EC_Scalar_Data& s) const { return as_bn(s).value().is_zero(); }
 
-      bool scalar_is_eq(const EC_Scalar_Data& x, const EC_Scalar_Data& y) const { return x.value() == y.value(); }
+      bool scalar_is_eq(const EC_Scalar_Data& x, const EC_Scalar_Data& y) const { return as_bn(x).value() == as_bn(y).value(); }
 
-      std::unique_ptr<EC_Scalar_Data> scalar_zero() const { return std::make_unique<EC_Scalar_Data>(BigInt::zero()); }
+      std::unique_ptr<EC_Scalar_Data> scalar_zero() const {
+         return std::make_unique<EC_Scalar_Data_BigInt>(BigInt::zero());
+      }
 
-      std::unique_ptr<EC_Scalar_Data> scalar_one() const { return std::make_unique<EC_Scalar_Data>(BigInt::one()); }
+      std::unique_ptr<EC_Scalar_Data> scalar_one() const {
+         return std::make_unique<EC_Scalar_Data_BigInt>(BigInt::one());
+      }
 
       std::unique_ptr<EC_Scalar_Data> scalar_invert(const EC_Scalar_Data& s) const {
-         return std::make_unique<EC_Scalar_Data>(inverse_mod_order(s.value()));
+         return std::make_unique<EC_Scalar_Data_BigInt>(inverse_mod_order(as_bn(s).value()));
       }
 
-      void scalar_assign(EC_Scalar_Data& x, const EC_Scalar_Data& y) { x.set_value(y.value()); }
+      void scalar_assign(EC_Scalar_Data& x, const EC_Scalar_Data& y) { as_bn(x).set_value(as_bn(y).value()); }
 
-      void scalar_square_self(EC_Scalar_Data& s) { s.set_value(square_mod_order(s.value())); }
+      void scalar_square_self(EC_Scalar_Data& s) { as_bn(s).set_value(square_mod_order(as_bn(s).value())); }
 
       std::unique_ptr<EC_Scalar_Data> scalar_negate(const EC_Scalar_Data& s) const {
-         return std::make_unique<EC_Scalar_Data>(mod_order(-s.value()));
+         return std::make_unique<EC_Scalar_Data_BigInt>(mod_order(-as_bn(s).value()));
       }
 
       std::unique_ptr<EC_Scalar_Data> scalar_add(const EC_Scalar_Data& a, const EC_Scalar_Data& b) const {
-         return std::make_unique<EC_Scalar_Data>(mod_order(a.value() + b.value()));
+         return std::make_unique<EC_Scalar_Data_BigInt>(mod_order(as_bn(a).value() + as_bn(b).value()));
       }
 
       std::unique_ptr<EC_Scalar_Data> scalar_sub(const EC_Scalar_Data& a, const EC_Scalar_Data& b) const {
-         return std::make_unique<EC_Scalar_Data>(mod_order(a.value() - b.value()));
+         return std::make_unique<EC_Scalar_Data_BigInt>(mod_order(as_bn(a).value() - as_bn(b).value()));
       }
 
       std::unique_ptr<EC_Scalar_Data> scalar_mul(const EC_Scalar_Data& a, const EC_Scalar_Data& b) const {
-         return std::make_unique<EC_Scalar_Data>(multiply_mod_order(a.value(), b.value()));
+         return std::make_unique<EC_Scalar_Data_BigInt>(multiply_mod_order(as_bn(a).value(), as_bn(b).value()));
       }
 
       std::unique_ptr<EC_Scalar_Data> scalar_from_bigint(const BigInt& bn) const {
          // Assumed to have been already checked as in range
-         return std::make_unique<EC_Scalar_Data>(bn);
+         return std::make_unique<EC_Scalar_Data_BigInt>(bn);
       }
 
       std::unique_ptr<EC_Scalar_Data> gk_x_mod_order(const EC_Scalar_Data& scalar,
                                                      RandomNumberGenerator& rng,
                                                      std::vector<BigInt>& ws) const {
-         const auto pt = m_base_mult.mul(scalar.value(), rng, m_order, ws);
+         const auto pt = m_base_mult.mul(as_bn(scalar).value(), rng, m_order, ws);
 
          if(pt.is_zero()) {
             return scalar_zero();
          } else {
-            return std::make_unique<EC_Scalar_Data>(mod_order(pt.get_affine_x()));
+            return std::make_unique<EC_Scalar_Data_BigInt>(mod_order(pt.get_affine_x()));
          }
       }
 
@@ -232,23 +271,41 @@ class EC_Group_Data final {
             return nullptr;
          }
 
-         return std::make_unique<EC_Scalar_Data>(std::move(r));
+         return std::make_unique<EC_Scalar_Data_BigInt>(std::move(r));
       }
 
       std::vector<uint8_t> scalar_serialize(const EC_Scalar_Data& s) const {
          std::vector<uint8_t> bytes(m_order_bytes);
-         s.value().binary_encode(bytes.data(), m_order_bytes);
+         as_bn(s).value().binary_encode(bytes.data(), m_order_bytes);
          return bytes;
       }
 
       std::vector<uint8_t> scalar_serialize_pair(const EC_Scalar_Data& r, const EC_Scalar_Data& s) const {
          std::vector<uint8_t> bytes(2 * m_order_bytes);
-         r.value().binary_encode(bytes.data(), m_order_bytes);
-         s.value().binary_encode(bytes.data() + m_order_bytes, m_order_bytes);
+         as_bn(r).value().binary_encode(bytes.data(), m_order_bytes);
+         as_bn(s).value().binary_encode(bytes.data() + m_order_bytes, m_order_bytes);
          return bytes;
       }
 
    private:
+      const EC_Scalar_Data_BigInt& as_bn(const EC_Scalar_Data& s) const {
+         try {
+            return dynamic_cast<const EC_Scalar_Data_BigInt&>(s);
+         }
+         catch(std::bad_cast&) {
+            throw Invalid_State("Bad cast to EC_Scalar_Data_BigInt");
+         }
+      }
+
+      EC_Scalar_Data_BigInt& as_bn(EC_Scalar_Data& s) const {
+         try {
+            return dynamic_cast<EC_Scalar_Data_BigInt&>(s);
+         }
+         catch(std::bad_cast&) {
+            throw Invalid_State("Bad cast to EC_Scalar_Data_BigInt");
+         }
+      }
+
       CurveGFp m_curve;
       EC_Point m_base_point;
 

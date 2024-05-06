@@ -216,6 +216,7 @@ class BOTAN_PUBLIC_API(2, 0) EC_Group final {
       /// Table for computing g*x + h*y
       class Mul2Table final {
          public:
+            BOTAN_DEPRECATED("Transitional API will be removed in 3.6")
             Mul2Table(const EC_Group& group, const EC_Point& h);
 
             Mul2Table(const EC_AffinePoint& h);
