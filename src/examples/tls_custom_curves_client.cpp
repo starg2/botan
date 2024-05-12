@@ -104,7 +104,7 @@ int main() {
    const Botan::BigInt a("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF40");
    const Botan::BigInt b("0x25581");
    const Botan::BigInt n("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE43C8275EA265C6020AB20294751A825");
-   const Botan::BigInt cofactor(1);
+   const Botan::BigInt cofactor = Botan::BigInt::one();
 
    const Botan::BigInt g_x("0x01");
    const Botan::BigInt g_y("0x696F1853C1E466D7FC82C96CCEEEDD6BD02C2F9375894EC10BF46306C2B56C77");

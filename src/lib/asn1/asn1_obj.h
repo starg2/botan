@@ -12,6 +12,7 @@
 #include <chrono>
 #include <iosfwd>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -150,6 +151,8 @@ class BOTAN_PUBLIC_API(2, 0) BER_Object final {
       const uint8_t* bits() const { return m_value.data(); }
 
       size_t length() const { return m_value.size(); }
+
+      std::span<const uint8_t> value() const { return m_value; }
 
       void assert_is_a(ASN1_Type type_tag, ASN1_Class class_tag, std::string_view descr = "object") const;
 

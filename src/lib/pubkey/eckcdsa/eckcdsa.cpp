@@ -77,8 +77,8 @@ std::vector<uint8_t> eckcdsa_prefix(const PointGFp& point, size_t order_bytes, s
    const BigInt public_y = point.get_affine_y();
 
    std::vector<uint8_t> prefix(2 * order_bytes);
-   BigInt::encode_1363(&prefix[0], order_bytes, public_x);
-   BigInt::encode_1363(&prefix[order_bytes], order_bytes, public_y);
+   public_x.serialize_to(std::span{prefix}.subspan(0, order_bytes));
+   public_y.serialize_to(std::span{prefix}.subspan(order_bytes, order_bytes));
 
    // Either truncate or zero-extend to match the hash block size
    prefix.resize(hash_block_size);
@@ -173,28 +173,24 @@ secure_vector<uint8_t> ECKCDSA_Signature_Operation::raw_sign(const uint8_t msg[]
    const BigInt k = m_group.random_scalar(rng);
    const BigInt k_times_P_x = m_group.blinded_base_point_multiply_x(k, rng, m_ws);
 
-   secure_vector<uint8_t> to_be_hashed(k_times_P_x.bytes());
-   k_times_P_x.binary_encode(to_be_hashed.data());
-
    auto hash = m_hash->new_object();
-   hash->update(to_be_hashed);
+   hash->update(k_times_P_x.serialize());
    secure_vector<uint8_t> c = hash->final();
    truncate_hash_if_needed(c, m_group.get_order_bytes());
 
-   const BigInt r(c.data(), c.size());
+   const auto r = c;
 
    BOTAN_ASSERT_NOMSG(msg_len == c.size());
    xor_buf(c, msg, c.size());
-   BigInt w(c.data(), c.size());
-   w = m_group.mod_order(w);
+   const BigInt w = m_group.mod_order(BigInt::from_bytes(c));
 
    const BigInt s = m_group.multiply_mod_order(m_x, k - w);
    if(s.is_zero()) {
       throw Internal_Error("During ECKCDSA signature generation created zero s");
    }
 
-   secure_vector<uint8_t> output = BigInt::encode_1363(r, c.size());
-   output += BigInt::encode_1363(s, m_group.get_order_bytes());
+   secure_vector<uint8_t> output = r;
+   output += s.serialize(m_group.get_order_bytes());
    return output;
 }
 
@@ -271,19 +267,16 @@ bool ECKCDSA_Verification_Operation::verify(const uint8_t msg[], size_t msg_len,
 
    secure_vector<uint8_t> r_xor_e(r);
    xor_buf(r_xor_e, msg, r.size());
-   BigInt w(r_xor_e.data(), r_xor_e.size());
-   w = m_group.mod_order(w);
+
+   const BigInt w = m_group.mod_order(BigInt::from_bytes(r_xor_e));
 
    const EC_Point q = m_gy_mul.multi_exp(w, s);
    if(q.is_zero()) {
       return false;
    }
 
-   const BigInt q_x = q.get_affine_x();
-   secure_vector<uint8_t> c(q_x.bytes());
-   q_x.binary_encode(c.data());
    auto c_hash = m_hash->new_object();
-   c_hash->update(c.data(), c.size());
+   c_hash->update(q.get_affine_x().serialize());
    secure_vector<uint8_t> v = c_hash->final();
    truncate_hash_if_needed(v, m_group.get_order_bytes());
 

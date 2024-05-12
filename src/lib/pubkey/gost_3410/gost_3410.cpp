@@ -26,8 +26,8 @@ std::vector<uint8_t> GOST_3410_PublicKey::public_key_bits() const {
 
    std::vector<uint8_t> bits(2 * part_size);
 
-   x.binary_encode(&bits[part_size - x.bytes()]);
-   y.binary_encode(&bits[2 * part_size - y.bytes()]);
+   x.serialize_to(std::span{bits}.subspan(0, part_size));
+   y.serialize_to(std::span{bits}.subspan(part_size));
 
    // Keys are stored in little endian format (WTF)
    for(size_t i = 0; i != part_size / 2; ++i) {

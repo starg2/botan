@@ -52,19 +52,11 @@ class SM2_Encryption_Operation final : public PK_Ops::Encryption {
          const EC_Point C1 = m_group.blinded_base_point_multiply(k, rng, m_ws);
          const BigInt x1 = C1.get_affine_x();
          const BigInt y1 = C1.get_affine_y();
-         std::vector<uint8_t> x1_bytes(p_bytes);
-         std::vector<uint8_t> y1_bytes(p_bytes);
-         BigInt::encode_1363(x1_bytes.data(), x1_bytes.size(), x1);
-         BigInt::encode_1363(y1_bytes.data(), y1_bytes.size(), y1);
 
          const EC_Point kPB = m_mul_public_point.mul(k, rng, m_group.get_order(), m_ws);
 
-         const BigInt x2 = kPB.get_affine_x();
-         const BigInt y2 = kPB.get_affine_y();
-         std::vector<uint8_t> x2_bytes(p_bytes);
-         std::vector<uint8_t> y2_bytes(p_bytes);
-         BigInt::encode_1363(x2_bytes.data(), x2_bytes.size(), x2);
-         BigInt::encode_1363(y2_bytes.data(), y2_bytes.size(), y2);
+         const auto x2_bytes = kPB.get_affine_x().serialize<secure_vector<uint8_t>>(p_bytes);
+         const auto y2_bytes = kPB.get_affine_y().serialize<secure_vector<uint8_t>>(p_bytes);
 
          secure_vector<uint8_t> kdf_input;
          kdf_input += x2_bytes;
@@ -78,8 +70,7 @@ class SM2_Encryption_Operation final : public PK_Ops::Encryption {
          m_hash->update(x2_bytes);
          m_hash->update(msg, msg_len);
          m_hash->update(y2_bytes);
-         std::vector<uint8_t> C3(m_hash->output_length());
-         m_hash->final(C3.data());
+         const auto C3 = m_hash->final<std::vector<uint8_t>>();
 
          return DER_Encoder()
             .start_sequence()
@@ -180,13 +171,8 @@ class SM2_Decryption_Operation final : public PK_Ops::Decryption {
 
          const EC_Point dbC1 = group.blinded_var_point_multiply(C1, m_key.private_value(), m_rng, m_ws);
 
-         const BigInt x2 = dbC1.get_affine_x();
-         const BigInt y2 = dbC1.get_affine_y();
-
-         secure_vector<uint8_t> x2_bytes(p_bytes);
-         secure_vector<uint8_t> y2_bytes(p_bytes);
-         BigInt::encode_1363(x2_bytes.data(), x2_bytes.size(), x2);
-         BigInt::encode_1363(y2_bytes.data(), y2_bytes.size(), y2);
+         const auto x2_bytes = dbC1.get_affine_x().serialize<secure_vector<uint8_t>>(p_bytes);
+         const auto y2_bytes = dbC1.get_affine_y().serialize<secure_vector<uint8_t>>(p_bytes);
 
          secure_vector<uint8_t> kdf_input;
          kdf_input += x2_bytes;
