@@ -15,18 +15,6 @@ namespace Botan::PCurve {
 template <typename C>
 class PrimeOrderCurveImpl final : public PrimeOrderCurve {
    public:
-      class PrecomputedMulTableC final : public PrimeOrderCurve::PrecomputedMulTable {
-         public:
-            static constexpr size_t WindowBits = 5;
-
-            const WindowedMulTable<C, WindowBits>& table() const { return m_table; }
-
-            explicit PrecomputedMulTableC(const typename C::AffinePoint& pt) : m_table(pt) {}
-
-         private:
-            WindowedMulTable<C, WindowBits> m_table;
-      };
-
       class PrecomputedMul2TableC final : public PrimeOrderCurve::PrecomputedMul2Table {
          public:
             static constexpr size_t WindowBits = 4;
@@ -52,29 +40,14 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
          return stash(tbl.mul(from_stash(scalar), rng));
       }
 
-      std::unique_ptr<const PrecomputedMulTable> mul_setup(const AffinePoint& pt) const override {
-         return std::make_unique<PrecomputedMulTableC>(from_stash(pt));
-      }
-
-      ProjectivePoint mul_with_table(const PrecomputedMulTable& tableb,
-                                     const Scalar& scalar,
-                                     RandomNumberGenerator& rng) const override {
-         try {
-            const auto& table = dynamic_cast<const PrecomputedMulTableC&>(tableb);
-            return stash(table.table().mul(from_stash(scalar), rng));
-         } catch(std::bad_cast&) {
-            throw Invalid_Argument("Curve mismatch");
-         }
-      }
-
       std::unique_ptr<const PrecomputedMul2Table> mul2_setup(const AffinePoint& x,
                                                              const AffinePoint& y) const override {
          return std::make_unique<PrecomputedMul2TableC>(from_stash(x), from_stash(y));
       }
 
-      ProjectivePoint mul2_vartime_with_table(const PrecomputedMul2Table& tableb,
-                                              const Scalar& s1,
-                                              const Scalar& s2) const override {
+      ProjectivePoint mul2_vartime(const PrecomputedMul2Table& tableb,
+                                   const Scalar& s1,
+                                   const Scalar& s2) const override {
          try {
             const auto& table = dynamic_cast<const PrecomputedMul2TableC&>(tableb);
             return stash(table.table().mul2_vartime(from_stash(s1), from_stash(s2)));
@@ -83,9 +56,9 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
          }
       }
 
-      Scalar mul2_vartime_x_mod_order_with_table(const PrecomputedMul2Table& tableb,
-                                                 const Scalar& s1,
-                                                 const Scalar& s2) const override {
+      Scalar mul2_vartime_x_mod_order(const PrecomputedMul2Table& tableb,
+                                      const Scalar& s1,
+                                      const Scalar& s2) const override {
          try {
             const auto& table = dynamic_cast<const PrecomputedMul2TableC&>(tableb);
             const auto pt = table.table().mul2_vartime(from_stash(s1), from_stash(s2));
@@ -94,28 +67,6 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
          } catch(std::bad_cast&) {
             throw Invalid_Argument("Curve mismatch");
          }
-      }
-
-      ProjectivePoint mul2_vartime(const AffinePoint& pt1,
-                                   const Scalar& s1,
-                                   const AffinePoint& pt2,
-                                   const Scalar& s2) const override {
-         // Doesn't make sense to use a large window when we throw away the table
-         // Even so, W=2 seems slightly better than W=1 here
-         auto tbl = WindowedMul2Table<C, 2>(from_stash(pt1), from_stash(pt2));
-         return stash(tbl.mul2_vartime(from_stash(s1), from_stash(s2)));
-      }
-
-      Scalar mul2_vartime_x_mod_order(const AffinePoint& pt1,
-                                      const Scalar& s1,
-                                      const AffinePoint& pt2,
-                                      const Scalar& s2) const override {
-         // Doesn't make sense to use a large window when we throw away the table
-         // Even so, W=2 seems slightly better than W=1 here
-         auto tbl = WindowedMul2Table<C, 2>(from_stash(pt1), from_stash(pt2));
-         auto pt = tbl.mul2_vartime(from_stash(s1), from_stash(s2));
-         const auto x_bytes = pt.to_affine().x().serialize();
-         return stash(C::Scalar::from_wide_bytes(std::span{x_bytes}));
       }
 
       Scalar base_point_mul_x_mod_order(const Scalar& scalar, RandomNumberGenerator& rng) const override {

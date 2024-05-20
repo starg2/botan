@@ -1241,14 +1241,12 @@ class Speed final : public Command {
                                                      [&]() { return curve->mul_by_g(scalar, rng()).to_affine(); });
 
                auto g = curve->generator();
-               auto g_tab = curve->mul_setup(g);
-               pcurves_var_timer->run_until_elapsed(
-                  runtime, [&]() { return curve->mul_with_table(*g_tab, scalar, rng()).to_affine(); });
-
                auto h = curve->mul(g, curve->random_scalar(rng()), rng()).to_affine();
+
+               auto gh_tab = curve->mul2_setup(g, h);
                const auto scalar2 = curve->random_scalar(rng());
                pcurves_mul2_timer->run_until_elapsed(
-                  runtime, [&]() { return curve->mul2_vartime(g, scalar, h, scalar2).to_affine(); });
+                  runtime, [&]() { return curve->mul2_vartime(*gh_tab, scalar, scalar2).to_affine(); });
 
                auto pt = curve->mul(g, curve->random_scalar(rng()), rng());
                to_affine->run_until_elapsed(runtime, [&]() { pt.to_affine(); });
@@ -1316,7 +1314,7 @@ class Speed final : public Command {
                   auto u1 = e * w;
                   auto u2 = r * w;
 
-                  auto v = curve->mul2_vartime_x_mod_order_with_table(*gy_tab, u1, u2);
+                  auto v = curve->mul2_vartime_x_mod_order(*gy_tab, u1, u2);
 
                   return (r == v);
                }(sig_r, sig_s);

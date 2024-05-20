@@ -218,11 +218,6 @@ class BOTAN_TEST_API PrimeOrderCurve {
             StorageUnit m_z;
       };
 
-      class PrecomputedMulTable {
-         public:
-            virtual ~PrecomputedMulTable() = default;
-      };
-
       class PrecomputedMul2Table {
          public:
             virtual ~PrecomputedMul2Table() = default;
@@ -236,32 +231,16 @@ class BOTAN_TEST_API PrimeOrderCurve {
 
       virtual ProjectivePoint mul(const AffinePoint& pt, const Scalar& scalar, RandomNumberGenerator& rng) const = 0;
 
-      virtual std::unique_ptr<const PrecomputedMulTable> mul_setup(const AffinePoint& pt) const = 0;
-
-      virtual ProjectivePoint mul_with_table(const PrecomputedMulTable& table,
-                                             const Scalar& scalar,
-                                             RandomNumberGenerator& rng) const = 0;
-
       virtual std::unique_ptr<const PrecomputedMul2Table> mul2_setup(const AffinePoint& pt1,
                                                                      const AffinePoint& pt2) const = 0;
 
-      virtual ProjectivePoint mul2_vartime_with_table(const PrecomputedMul2Table& table,
-                                                      const Scalar& s1,
-                                                      const Scalar& s2) const = 0;
-
-      virtual ProjectivePoint mul2_vartime(const AffinePoint& pt1,
+      virtual ProjectivePoint mul2_vartime(const PrecomputedMul2Table& table,
                                            const Scalar& s1,
-                                           const AffinePoint& pt2,
                                            const Scalar& s2) const = 0;
 
-      virtual Scalar mul2_vartime_x_mod_order(const AffinePoint& pt1,
+      virtual Scalar mul2_vartime_x_mod_order(const PrecomputedMul2Table& table,
                                               const Scalar& s1,
-                                              const AffinePoint& pt2,
                                               const Scalar& s2) const = 0;
-
-      virtual Scalar mul2_vartime_x_mod_order_with_table(const PrecomputedMul2Table& table,
-                                                         const Scalar& s1,
-                                                         const Scalar& s2) const = 0;
 
       virtual AffinePoint generator() const = 0;
 
