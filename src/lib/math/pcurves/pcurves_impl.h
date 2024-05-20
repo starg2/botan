@@ -1062,6 +1062,7 @@ class BlindedScalarBits final {
 
          W mask[n_words] = {0};
          load_le(mask, maskb, mask_words);
+         mask[mask_words-1] |= WordInfo<W>::top_bit;
 
          W mask_n[2 * n_words] = {0};
 
@@ -1155,6 +1156,11 @@ class PrecomputedBaseMulTable final {
             const size_t w_i = bits.get_window(WindowBits * i);
             const auto tbl_i = std::span{m_table.begin() + WindowElements * i, WindowElements};
 
+            /*
+            None of these additions can be doublings, because in each iteration, the
+            discrete logarithms of the points we're selecting out of the table are
+            larger than the largest possible dlog of accum.
+            */
             accum += AffinePoint::ct_select(tbl_i, w_i);
 
             if(i <= 3) {
@@ -1208,8 +1214,10 @@ class WindowedMulTable final {
          const BlindedScalar bits(s, rng);
 
          auto accum = [&]() {
-            const size_t w_i = bits.get_window((Windows - 1) * WindowBits);
-            auto pt = ProjectivePoint::from_affine(AffinePoint::ct_select(m_table, w_i));
+            const size_t w_0 = bits.get_window((Windows - 1) * WindowBits);
+            // Guaranteed because we set the high bit of the randomizer
+            BOTAN_DEBUG_ASSERT(w_0 != 0);
+            auto pt = ProjectivePoint::from_affine(AffinePoint::ct_select(m_table, w_0));
             pt.randomize_rep(rng);
             return pt;
          }();
@@ -1217,6 +1225,23 @@ class WindowedMulTable final {
          for(size_t i = 1; i != Windows; ++i) {
             accum = accum.dbl_n(WindowBits);
             const size_t w_i = bits.get_window((Windows - i - 1) * WindowBits);
+
+            /*
+            It's impossible for this addition to ever be a doubling.
+
+            Consider the sequence of points that are operated on, and specifically
+            their discrete logarithms. We start out at at the point at infinity
+            (dlog 0) and then add the initial window which is precisely P*w_0
+
+            We then perform WindowBits doublings, so accum's dlog at the point
+            of the addition in the first iteration of the loop (when i == 1) is
+            at least 2^W * w_0.
+
+            Since we know w_0 > 0, then in every iteration of the loop, accums
+            dlog will always be greater than the dlog of the table element we
+            just looked up (something between 0 and 2^W-1), and thus the
+            addition into accum cannot be a doubling.
+            */
             accum += AffinePoint::ct_select(m_table, w_i);
 
             if(i <= 3) {

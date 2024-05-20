@@ -36,6 +36,7 @@ struct WordInfo<uint32_t> {
       static const constexpr size_t bytes = 4;
       static const constexpr size_t bits = 32;
       static const constexpr uint32_t max = 0xFFFFFFFF;
+      static const constexpr uint32_t top_bit = 0x80000000;
 
       typedef uint64_t dword;
       static const constexpr bool dword_is_native = true;
@@ -47,6 +48,7 @@ struct WordInfo<uint64_t> {
       static const constexpr size_t bytes = 8;
       static const constexpr size_t bits = 64;
       static const constexpr uint64_t max = 0xFFFFFFFFFFFFFFFF;
+      static const constexpr uint64_t top_bit = 0x8000000000000000;
 
 #if defined(BOTAN_TARGET_HAS_NATIVE_UINT128)
       typedef uint128_t dword;
