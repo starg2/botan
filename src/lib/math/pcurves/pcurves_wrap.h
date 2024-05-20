@@ -31,6 +31,8 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
       static_assert(C::OrderBits <= PrimeOrderCurve::MaximumBitLength);
       static_assert(C::PrimeFieldBits <= PrimeOrderCurve::MaximumBitLength);
 
+      size_t order_bits() const override { return C::OrderBits; }
+
       ProjectivePoint mul_by_g(const Scalar& scalar, RandomNumberGenerator& rng) const override {
          return stash(m_mul_by_g.mul(from_stash(scalar), rng));
       }

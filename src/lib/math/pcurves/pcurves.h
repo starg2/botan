@@ -225,6 +225,8 @@ class BOTAN_TEST_API PrimeOrderCurve {
 
       virtual ~PrimeOrderCurve() = default;
 
+      virtual size_t order_bits() const = 0;
+
       virtual ProjectivePoint mul_by_g(const Scalar& scalar, RandomNumberGenerator& rng) const = 0;
 
       virtual Scalar base_point_mul_x_mod_order(const Scalar& scalar, RandomNumberGenerator& rng) const = 0;
@@ -286,8 +288,6 @@ class BOTAN_TEST_API PrimeOrderCurve {
       virtual bool scalar_equal(const Scalar& a, const Scalar& b) const = 0;
 
       virtual Scalar random_scalar(RandomNumberGenerator& rng) const = 0;
-
-      //virtual Scalar rfc6979_scalar(std::string_view hash_fn, const Scalar& sk, const Scalar& m) = 0;
 
       virtual ProjectivePoint hash_to_curve(std::string_view hash,
                                             std::span<const uint8_t> input,

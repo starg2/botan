@@ -1052,28 +1052,33 @@ class BlindedScalarBits final {
       static constexpr size_t Bits = C::Scalar::BITS + BlindingBits;
 
       BlindedScalarBits(const typename C::Scalar& scalar, RandomNumberGenerator& rng) {
-         constexpr size_t mask_words = BlindingBits / WordInfo<W>::bits;
-         constexpr size_t mask_bytes = mask_words * WordInfo<W>::bytes;
+         if constexpr(BlindingBits > 0) {
+            constexpr size_t mask_words = BlindingBits / WordInfo<W>::bits;
+            constexpr size_t mask_bytes = mask_words * WordInfo<W>::bytes;
 
-         constexpr size_t n_words = C::NW.size();
+            constexpr size_t n_words = C::NW.size();
 
-         uint8_t maskb[mask_bytes] = {0};
-         rng.randomize(maskb, mask_bytes);
+            uint8_t maskb[mask_bytes] = {0};
+            rng.randomize(maskb, mask_bytes);
 
-         W mask[n_words] = {0};
-         load_le(mask, maskb, mask_words);
-         mask[mask_words-1] |= WordInfo<W>::top_bit;
+            W mask[n_words] = {0};
+            load_le(mask, maskb, mask_words);
+            mask[mask_words - 1] |= WordInfo<W>::top_bit;
 
-         W mask_n[2 * n_words] = {0};
+            W mask_n[2 * n_words] = {0};
 
-         const auto sw = scalar.to_words();
+            const auto sw = scalar.to_words();
 
-         // Compute masked scalar s + k*n
-         comba_mul<n_words>(mask_n, mask, C::NW.data());
-         bigint_add2_nc(mask_n, 2 * n_words, sw.data(), sw.size());
+            // Compute masked scalar s + k*n
+            comba_mul<n_words>(mask_n, mask, C::NW.data());
+            bigint_add2_nc(mask_n, 2 * n_words, sw.data(), sw.size());
 
-         std::reverse(mask_n, mask_n + 2 * n_words);
-         m_bytes = store_be<secure_vector<uint8_t>>(mask_n);
+            std::reverse(mask_n, mask_n + 2 * n_words);
+            m_bytes = store_be<secure_vector<uint8_t>>(mask_n);
+         } else {
+            auto sb = scalar.serialize();
+            m_bytes.assign(sb.begin(), sb.end());
+         }
       }
 
       // Extract a WindowBits sized window out of s, depending on offset.
