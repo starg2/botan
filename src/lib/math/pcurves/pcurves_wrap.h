@@ -22,7 +22,7 @@ class PrimeOrderCurve::PrecomputedMul2Table {
       virtual ~PrecomputedMul2Table() = default;
 };
 
-template <PrimeOrderCurveId::Id ID, typename C>
+template <typename C>
 class PrimeOrderCurveImpl final : public PrimeOrderCurve {
    public:
       class PrecomputedMulTableC final : public PrimeOrderCurve::PrecomputedMulTable {
@@ -52,8 +52,6 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
 
       static_assert(C::OrderBits <= PrimeOrderCurve::MaximumBitLength);
       static_assert(C::PrimeFieldBits <= PrimeOrderCurve::MaximumBitLength);
-
-      std::optional<PrimeOrderCurveId> curve_id() const override { return ID; }
 
       ProjectivePoint mul_by_g(const Scalar& scalar, RandomNumberGenerator& rng) const override {
          return stash(m_mul_by_g.mul(from_stash(scalar), rng));
@@ -238,7 +236,7 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
       PrimeOrderCurveImpl() : m_mul_by_g(C::G) {}
 
       static std::shared_ptr<const PrimeOrderCurve> instance() {
-         static auto g_curve = std::make_shared<const PrimeOrderCurveImpl<ID, C>>();
+         static auto g_curve = std::make_shared<const PrimeOrderCurveImpl<C>>();
          return g_curve;
       }
 

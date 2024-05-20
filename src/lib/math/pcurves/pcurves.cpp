@@ -159,23 +159,23 @@ class Curve final : public EllipticCurve<Params> {};
 std::shared_ptr<const PrimeOrderCurve> PrimeOrderCurve::from_id(PrimeOrderCurveId id) {
    switch(id.code()) {
       case PrimeOrderCurveId::secp256r1:
-         return PrimeOrderCurveImpl<PrimeOrderCurveId::secp256r1, secp256r1::Curve>::instance();
+         return PrimeOrderCurveImpl<secp256r1::Curve>::instance();
       case PrimeOrderCurveId::secp384r1:
-         return PrimeOrderCurveImpl<PrimeOrderCurveId::secp384r1, secp384r1::Curve>::instance();
+         return PrimeOrderCurveImpl<secp384r1::Curve>::instance();
       case PrimeOrderCurveId::secp521r1:
-         return PrimeOrderCurveImpl<PrimeOrderCurveId::secp521r1, secp521r1::Curve>::instance();
+         return PrimeOrderCurveImpl<secp521r1::Curve>::instance();
       case PrimeOrderCurveId::secp256k1:
-         return PrimeOrderCurveImpl<PrimeOrderCurveId::secp256k1, secp256k1::Curve>::instance();
+         return PrimeOrderCurveImpl<secp256k1::Curve>::instance();
       case PrimeOrderCurveId::brainpool256r1:
-         return PrimeOrderCurveImpl<PrimeOrderCurveId::brainpool256r1, brainpool256r1::Curve>::instance();
+         return PrimeOrderCurveImpl<brainpool256r1::Curve>::instance();
       case PrimeOrderCurveId::brainpool384r1:
-         return PrimeOrderCurveImpl<PrimeOrderCurveId::brainpool384r1, brainpool384r1::Curve>::instance();
+         return PrimeOrderCurveImpl<brainpool384r1::Curve>::instance();
       case PrimeOrderCurveId::brainpool512r1:
-         return PrimeOrderCurveImpl<PrimeOrderCurveId::brainpool512r1, brainpool512r1::Curve>::instance();
+         return PrimeOrderCurveImpl<brainpool512r1::Curve>::instance();
       case PrimeOrderCurveId::frp256v1:
-         return PrimeOrderCurveImpl<PrimeOrderCurveId::frp256v1, frp256v1::Curve>::instance();
+         return PrimeOrderCurveImpl<frp256v1::Curve>::instance();
       case PrimeOrderCurveId::sm2p256v1:
-         return PrimeOrderCurveImpl<PrimeOrderCurveId::sm2p256v1, sm2p256v1::Curve>::instance();
+         return PrimeOrderCurveImpl<sm2p256v1::Curve>::instance();
       default:
          return {};
    }

@@ -589,11 +589,9 @@ class AffineCurvePoint {
          return result;
       }
 
+      static constexpr FieldElement x3_ax_b(const FieldElement& x) { return (x.square() + Self::A) * x + Self::B; }
+
       static constexpr std::optional<Self> deserialize(std::span<const uint8_t> bytes) {
-         auto x3_ax_b = [](const FieldElement& x) { return (x.square() + Self::A) * x + Self::B; };
-
-         auto valid_xy = [x3_ax_b](const FieldElement& x, const FieldElement& y) { return (y.square() == x3_ax_b(x)); };
-
          if(bytes.size() == Self::BYTES) {
             if(bytes[0] != 0x04) {
                return {};
@@ -602,7 +600,7 @@ class AffineCurvePoint {
             auto y = FieldElement::deserialize(bytes.subspan(1 + FieldElement::BYTES, FieldElement::BYTES));
 
             if(x && y) {
-               if(valid_xy(*x, *y)) {
+               if((*y).square() == Self::x3_ax_b(*x)) {
                   return Self(*x, *y);
                }
             }
@@ -998,32 +996,28 @@ class EllipticCurve {
 
       class ScalarParams final : public IntParams<W, NW.size(), NW> {};
 
+      typedef IntMod<MontgomeryRep<ScalarParams>> Scalar;
+
       class FieldParams final : public IntParams<W, PW.size(), PW> {};
 
-      typedef IntMod<MontgomeryRep<ScalarParams>> Scalar;
       typedef IntMod<FieldRep<FieldParams>> FieldElement;
+
+      typedef AffineCurvePoint<FieldElement, Params> AffinePoint;
+      typedef ProjectiveCurvePoint<FieldElement, Params> ProjectivePoint;
 
       static const constinit size_t OrderBits = Scalar::BITS;
       static const constinit size_t PrimeFieldBits = FieldElement::BITS;
 
-      // Use 1/3 the order, rounded up to the next word for blinding
-      static const constinit size_t BlindingBits =
-         ((OrderBits / 3 + WordInfo<W>::bits - 1) / WordInfo<W>::bits) * WordInfo<W>::bits;
-
       static const constexpr FieldElement A = FieldElement::from_words(Params::AW);
       static const constexpr FieldElement B = FieldElement::from_words(Params::BW);
-      static const constexpr FieldElement Gx = FieldElement::from_words(Params::GXW);
-      static const constexpr FieldElement Gy = FieldElement::from_words(Params::GYW);
+
+      static const constexpr AffinePoint G =
+         AffinePoint(FieldElement::from_words(Params::GXW), FieldElement::from_words(Params::GYW));
 
       static const constexpr FieldElement SSWU_Z = FieldElement::constant(Params::Z);
 
       static const constinit bool ValidForSswuHash =
          (SSWU_Z.is_nonzero() && A.is_nonzero() && B.is_nonzero() && FieldElement::P_MOD_4 == 3);
-
-      typedef AffineCurvePoint<FieldElement, Params> AffinePoint;
-      typedef ProjectiveCurvePoint<FieldElement, Params> ProjectivePoint;
-
-      static const constexpr AffinePoint G = AffinePoint(Gx, Gy);
 
       // (-B / A), will be zero if A == 0 or B == 0 or Z == 0
       template <typename = typename std::enable_if<ValidForSswuHash>>
@@ -1047,17 +1041,21 @@ class BlindedScalarBits final {
    private:
       typedef typename C::W W;
 
-      static_assert(C::BlindingBits % WordInfo<W>::bits == 0);
-      static_assert(C::BlindingBits < C::Scalar::BITS);
+      // Use 1/3 the order, rounded up to the next word for blinding
+      static const constinit size_t BlindingBits =
+         ((C::OrderBits / 3 + WordInfo<W>::bits - 1) / WordInfo<W>::bits) * WordInfo<W>::bits;
+
+      static_assert(BlindingBits % WordInfo<W>::bits == 0);
+      static_assert(BlindingBits < C::Scalar::BITS);
 
    public:
-      static constexpr size_t Bits = C::Scalar::BITS + C::BlindingBits;
+      static constexpr size_t Bits = C::Scalar::BITS + BlindingBits;
 
       BlindedScalarBits(const typename C::Scalar& scalar, RandomNumberGenerator& rng) {
-         const size_t mask_words = C::BlindingBits / WordInfo<W>::bits;
-         const size_t mask_bytes = mask_words * WordInfo<W>::bytes;
+         constexpr size_t mask_words = BlindingBits / WordInfo<W>::bits;
+         constexpr size_t mask_bytes = mask_words * WordInfo<W>::bytes;
 
-         const size_t n_words = C::NW.size();
+         constexpr size_t n_words = C::NW.size();
 
          uint8_t maskb[mask_bytes] = {0};
          rng.randomize(maskb, mask_bytes);
@@ -1324,10 +1322,10 @@ inline auto map_to_curve_sswu(const typename C::FieldElement& u) -> typename C::
    const auto tv1 = (z2_u4 + z_u2).invert();
    auto x1 = C::SSWU_C1() * (C::FieldElement::one() + tv1);
    x1.conditional_assign(tv1.is_zero(), C::SSWU_C2());
-   const auto gx1 = (x1.square() + C::A) * x1 + C::B;
+   const auto gx1 = C::AffinePoint::x3_ax_b(x1);
 
    const auto x2 = C::SSWU_Z * u.square() * x1;
-   const auto gx2 = (x2.square() + C::A) * x2 + C::B;
+   const auto gx2 = C::AffinePoint::x3_ax_b(x2);
 
    const auto gx1_is_square = gx1.is_square();
 

@@ -224,8 +224,6 @@ class BOTAN_TEST_API PrimeOrderCurve {
 
       virtual ~PrimeOrderCurve() = default;
 
-      virtual std::optional<PrimeOrderCurveId> curve_id() const = 0;
-
       virtual ProjectivePoint mul_by_g(const Scalar& scalar, RandomNumberGenerator& rng) const = 0;
 
       virtual Scalar base_point_mul_x_mod_order(const Scalar& scalar, RandomNumberGenerator& rng) const = 0;
