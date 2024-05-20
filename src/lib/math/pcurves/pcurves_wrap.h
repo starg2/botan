@@ -12,16 +12,6 @@
 
 namespace Botan::PCurve {
 
-class PrimeOrderCurve::PrecomputedMulTable {
-   public:
-      virtual ~PrecomputedMulTable() = default;
-};
-
-class PrimeOrderCurve::PrecomputedMul2Table {
-   public:
-      virtual ~PrecomputedMul2Table() = default;
-};
-
 template <typename C>
 class PrimeOrderCurveImpl final : public PrimeOrderCurve {
    public:
@@ -62,8 +52,8 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
          return stash(tbl.mul(from_stash(scalar), rng));
       }
 
-      std::shared_ptr<const PrecomputedMulTable> mul_setup(const AffinePoint& pt) const override {
-         return std::make_shared<PrecomputedMulTableC>(from_stash(pt));
+      std::unique_ptr<const PrecomputedMulTable> mul_setup(const AffinePoint& pt) const override {
+         return std::make_unique<PrecomputedMulTableC>(from_stash(pt));
       }
 
       ProjectivePoint mul_with_table(const PrecomputedMulTable& tableb,
@@ -77,9 +67,9 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
          }
       }
 
-      std::shared_ptr<const PrecomputedMul2Table> mul2_setup(const AffinePoint& x,
+      std::unique_ptr<const PrecomputedMul2Table> mul2_setup(const AffinePoint& x,
                                                              const AffinePoint& y) const override {
-         return std::make_shared<PrecomputedMul2TableC>(from_stash(x), from_stash(y));
+         return std::make_unique<PrecomputedMul2TableC>(from_stash(x), from_stash(y));
       }
 
       ProjectivePoint mul2_vartime_with_table(const PrecomputedMul2Table& tableb,
