@@ -7,6 +7,7 @@
 #ifndef BOTAN_PCURVES_H_
 #define BOTAN_PCURVES_H_
 
+#include <botan/secmem.h>
 #include <botan/types.h>
 #include <array>
 #include <optional>
@@ -145,6 +146,8 @@ class BOTAN_TEST_API PrimeOrderCurve {
 
             std::vector<uint8_t> serialize() const { return m_curve->serialize_point(*this, false); }
 
+            secure_vector<uint8_t> x_bytes() const { return m_curve->affine_point_x_bytes(*this); }
+
             std::vector<uint8_t> serialize_compressed() const { return m_curve->serialize_point(*this, true); }
 
             // AKA the point at infinity
@@ -275,6 +278,8 @@ class BOTAN_TEST_API PrimeOrderCurve {
       virtual ProjectivePoint point_add_mixed(const ProjectivePoint& a, const AffinePoint& b) const = 0;
 
       virtual std::vector<uint8_t> serialize_point(const AffinePoint& pt, bool compress) const = 0;
+
+      virtual secure_vector<uint8_t> affine_point_x_bytes(const AffinePoint& pt) const = 0;
 
       virtual std::vector<uint8_t> serialize_scalar(const Scalar& scalar) const = 0;
 

@@ -536,6 +536,11 @@ class AffineCurvePoint {
 
       constexpr Self negate() const { return Self(x(), y().negate()); }
 
+      secure_vector<uint8_t> serialize_x_coordinate() const {
+         auto xb = x().serialize();
+         return secure_vector<uint8_t>(xb.begin(), xb.end());
+      }
+
       std::vector<uint8_t> serialize_to_vec(bool compress) const {
          if(compress) {
             const auto b = this->serialize_compressed();
@@ -593,8 +598,8 @@ class AffineCurvePoint {
             if(bytes[0] != 0x04) {
                return {};
             }
-            auto x = FieldElement::deserialize(bytes.subspan(1, Self::BYTES));
-            auto y = FieldElement::deserialize(bytes.subspan(1 + Self::BYTES, Self::BYTES));
+            auto x = FieldElement::deserialize(bytes.subspan(1, FieldElement::BYTES));
+            auto y = FieldElement::deserialize(bytes.subspan(1 + FieldElement::BYTES, FieldElement::BYTES));
 
             if(x && y) {
                if(valid_xy(*x, *y)) {
@@ -609,7 +614,7 @@ class AffineCurvePoint {
             }
             const bool y_is_even = (bytes[0] == 0x02);
 
-            if(auto x = FieldElement::deserialize(bytes.subspan(1, Self::BYTES))) {
+            if(auto x = FieldElement::deserialize(bytes.subspan(1, FieldElement::BYTES))) {
                const auto y2 = x3_ax_b(*x);
                auto y = y2.sqrt();
                if(y_is_even && !y.is_even()) {
@@ -1069,15 +1074,14 @@ class BlindedScalarBits final {
          bigint_add2_nc(mask_n, 2 * n_words, sw.data(), sw.size());
 
          std::reverse(mask_n, mask_n + 2 * n_words);
-         m_bytes = store_be<std::vector<uint8_t>>(mask_n);
+         m_bytes = store_be<secure_vector<uint8_t>>(mask_n);
       }
 
       // Extract a WindowBits sized window out of s, depending on offset.
       size_t get_window(size_t offset) const { return read_window_bits<WindowBits>(std::span{m_bytes}, offset); }
 
    private:
-      // secure_vector?
-      std::vector<uint8_t> m_bytes;
+      secure_vector<uint8_t> m_bytes;
 };
 
 template <typename C, size_t WindowBits>

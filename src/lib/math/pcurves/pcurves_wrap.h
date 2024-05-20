@@ -166,6 +166,10 @@ class PrimeOrderCurveImpl final : public PrimeOrderCurve {
          return from_stash(pt).serialize_to_vec(compress);
       }
 
+      secure_vector<uint8_t> affine_point_x_bytes(const AffinePoint& pt) const override {
+         return from_stash(pt).serialize_x_coordinate();
+      }
+
       std::vector<uint8_t> serialize_scalar(const Scalar& scalar) const override {
          return from_stash(scalar).serialize_to_vec();
       }

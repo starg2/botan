@@ -47,6 +47,45 @@ class Pcurve_Basemul_Tests final : public Text_Based_Test {
 
 BOTAN_REGISTER_TEST("pcurves", "pcurves_basemul", Pcurve_Basemul_Tests);
 
+class Pcurve_Ecdh_Tests final : public Text_Based_Test {
+   public:
+      Pcurve_Ecdh_Tests() : Text_Based_Test("pubkey/ecdh.vec", "Secret,CounterKey,K") {}
+
+      Test::Result run_one_test(const std::string& group_id, const VarMap& vars) override {
+         Test::Result result("Pcurves ECDH " + group_id);
+
+         const auto sk = vars.get_req_bin("Secret");
+         const auto peer_key = vars.get_req_bin("CounterKey");
+         const auto shared_secret = vars.get_req_bin("K");
+
+         auto curve = Botan::PCurve::PrimeOrderCurve::from_name(group_id);
+
+         if(!curve) {
+            result.test_note("Skipping test due to missing pcurve " + group_id);
+            return result;
+         }
+
+         auto x = curve->deserialize_scalar(sk);
+         auto pt = curve->deserialize_point(peer_key);
+
+         if(x && pt) {
+            const auto tbl = curve->mul_setup(pt.value());
+            if(tbl) {
+               auto ss = curve->mul_with_table(*tbl, x.value(), rng()).to_affine().x_bytes();
+               result.test_eq("shared secret", ss, shared_secret);
+            } else {
+               result.test_failure("Failed to create pt table");
+            }
+         } else {
+            result.test_failure("Curve rejected test inputs");
+         }
+
+         return result;
+      }
+};
+
+BOTAN_REGISTER_TEST("pcurves", "pcurves_ecdh", Pcurve_Ecdh_Tests);
+
 class Pcurve_Ecdsa_Sign_Tests final : public Text_Based_Test {
    public:
       Pcurve_Ecdsa_Sign_Tests() : Text_Based_Test("pubkey/ecdsa_pcurves.vec", "X,E,K,Sig") {}
